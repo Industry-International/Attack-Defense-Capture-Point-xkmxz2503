@@ -80,7 +80,7 @@
 
   "node.capture_point.display_name": "据点",
   "node.capture_point.option.captured": "已占领",
-  "node.capture_point.option.owner": "所属",
+  "node.capture_point.option.owner": "所属区域",
   "node.capture_point.option.position": "位置",
   "node.capture_point.port.point_signal": "据点",
 

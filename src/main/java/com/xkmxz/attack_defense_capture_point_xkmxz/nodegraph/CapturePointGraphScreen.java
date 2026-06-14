@@ -409,13 +409,14 @@ public class CapturePointGraphScreen {
                         if (name == null || name.isEmpty()) continue;
 
                         if (hasOutputPort(nm, "point_signal")) {
-                            // 据点节点：显示名称 + 所有者
+                            // 据点节点：显示名称 + 所属区域
                             var entry = points.get(name);
                             if (entry != null) {
-                                String owner = entry.owner() != null ? entry.owner() : "none";
-                                nm.setTitle(Component.literal(name + " [" + owner + "]"));
-                                // 同步选项数据
-                                syncPointOptions(nm, entry, mgr.isZoneCaptured(name));
+                                String zoneName = mgr.findZoneForPoint(name);
+                                String zoneDisplay = zoneName != null ? zoneName : "—";
+                                nm.setTitle(Component.literal(name + " [" + zoneDisplay + "]"));
+                                // 同步选项数据（所属显示区域名，非玩家名）
+                                syncPointOptions(nm, entry, mgr.isZoneCaptured(name), zoneName);
                             } else {
                                 nm.setTitle(Component.literal(name));
                             }
@@ -463,11 +464,13 @@ public class CapturePointGraphScreen {
     }
 
     /**
-     * 同步据点节点选项（captured / owner / position）
+     * 同步据点节点选项（captured / owner(区域名) / position）
+     * "所属"字段显示该据点连接的区域名称（由 mgr.findZoneForPoint 获取），
+     * 区域由连线管理，此处仅做只读展示。
      */
-    private static void syncPointOptions(NodeModel nm, CaptureManager.CapturePointEntry entry, boolean isCaptured) {
+    private static void syncPointOptions(NodeModel nm, CaptureManager.CapturePointEntry entry, boolean isCaptured, @org.jetbrains.annotations.Nullable String zoneName) {
         setOptionValue(nm, "captured", isCaptured);
-        setOptionValue(nm, "owner", entry.owner() != null ? entry.owner() : "");
+        setOptionValue(nm, "owner", zoneName != null ? zoneName : "");
         setOptionValue(nm, "position", entry.pos().getX() + ", " + entry.pos().getY() + ", " + entry.pos().getZ());
     }
 

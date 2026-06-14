@@ -80,7 +80,7 @@
 
   "node.capture_point.display_name": "Capture Point",
   "node.capture_point.option.captured": "Captured",
-  "node.capture_point.option.owner": "Owner",
+  "node.capture_point.option.owner": "Zone",
   "node.capture_point.option.position": "Position",
   "node.capture_point.port.point_signal": "Point",
 
