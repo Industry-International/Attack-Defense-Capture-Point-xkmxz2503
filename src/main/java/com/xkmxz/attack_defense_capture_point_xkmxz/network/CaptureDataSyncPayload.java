@@ -11,9 +11,11 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -42,14 +44,27 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
         return TYPE;
     }
 
+    // ---- 版本去重（避免无变更时重复广播） ----
+
+    private static final Map<ResourceKey<Level>, Long> LAST_BROADCAST_VERSION = new HashMap<>();
+
     // ---- 服务端发送入口 ----
 
     /**
      * 将 CaptureManager 中所有据点的渲染数据广播给所有在线玩家。
+     * 内部自带版本去重——如果 CaptureManager 版本号未变，不重复发送。
      * 在数据变更后调用（GUI 保存、命令修改、方块操作等）。
      */
     public static void broadcastToAll(ServerLevel level) {
         var access = ICaptureDataAccess.server(level);
+        long currentVersion = access.getVersion();
+
+        // 版本去重：数据没变就不发
+        var dimKey = level.dimension();
+        Long lastVersion = LAST_BROADCAST_VERSION.get(dimKey);
+        if (lastVersion != null && lastVersion == currentVersion) return;
+        LAST_BROADCAST_VERSION.put(dimKey, currentVersion);
+
         var pointMap = new HashMap<String, PointRenderData>();
         for (var entry : access.getPoints().values()) {
             pointMap.put(entry.name(), new PointRenderData(
