@@ -53,11 +53,9 @@
   "gui.attack_defense_capture_point_xkmxz.graph.title": "Capture Point Graph Editor",
   "gui.attack_defense_capture_point_xkmxz.graph.zone_deps": "=== Zone Dependency Graph ===",
   "gui.attack_defense_capture_point_xkmxz.graph.zoom": "Zoom",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_edit_relations": "Show Relations",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_setup_example": "Setup Example (A→B)",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_show_status": "Show Status",
+  "gui.attack_defense_capture_point_xkmxz.graph.empty_hint": "Use toolbar buttons to create zones and points.",
   "gui.attack_defense_capture_point_xkmxz.graph.btn_create_point": "Create Point",
   "gui.attack_defense_capture_point_xkmxz.graph.btn_create_zone": "Create Zone",
+  "gui.attack_defense_capture_point_xkmxz.graph.btn_show_status": "Show Status",
   "gui.attack_defense_capture_point_xkmxz.graph.btn_refresh": "Refresh",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_close": "Close"
 }

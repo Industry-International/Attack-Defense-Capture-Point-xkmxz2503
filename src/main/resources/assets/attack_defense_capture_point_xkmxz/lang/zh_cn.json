@@ -53,11 +53,9 @@
   "gui.attack_defense_capture_point_xkmxz.graph.title": "据点关系图编辑器",
   "gui.attack_defense_capture_point_xkmxz.graph.zone_deps": "=== 区域依赖关系图 ===",
   "gui.attack_defense_capture_point_xkmxz.graph.zoom": "缩放",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_edit_relations": "查看关系",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_setup_example": "创建示例 (A→B)",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_show_status": "查看状态",
+  "gui.attack_defense_capture_point_xkmxz.graph.empty_hint": "使用顶部工具栏创建据点和区域。",
   "gui.attack_defense_capture_point_xkmxz.graph.btn_create_point": "创建据点",
   "gui.attack_defense_capture_point_xkmxz.graph.btn_create_zone": "创建区域",
+  "gui.attack_defense_capture_point_xkmxz.graph.btn_show_status": "查看状态",
   "gui.attack_defense_capture_point_xkmxz.graph.btn_refresh": "刷新",
-  "gui.attack_defense_capture_point_xkmxz.graph.btn_close": "关闭"
 }
