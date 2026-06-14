@@ -197,12 +197,14 @@ public class CapturePointGraphView extends GraphView {
     }
 
     /**
-     * 判断节点模型是否为区域节点（通过检查是否有 "captured" 选项）。
-     * 据点节点有 "owner" 选项，区域节点有 "captured" 选项。
+     * 判断节点模型是否为区域节点（通过检查是否有 "required_zone" 选项）。
+     * 据点节点选项：captured / owner / position
+     * 区域节点选项：captured / required_zone / points
+     * "required_zone" 仅为区域节点独有。
      */
     private boolean isZoneModel(AbstractNodeModel model) {
         if (model instanceof INodeWithOptions opts) {
-            return opts.getNodeOptionById("captured") != null;
+            return opts.getNodeOptionById("required_zone") != null;
         }
         return false;
     }
