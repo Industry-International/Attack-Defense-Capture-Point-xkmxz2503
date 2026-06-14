@@ -42,10 +42,10 @@ public class CapturePointGraphScreen {
                 .layout(l -> l.width(scw).height(sch))
                 .style(s -> s.background(Sprites.BORDER).backgroundTexture(new ColorRectTexture(PANEL_BG)));
 
-        // 创建通知层（在根容器最上层）
+        // 创建通知层（偏右上角，在顶栏下方，避免被遮挡）
         var toastContainer = new UIElement()
                 .layout(l -> l.positionType(dev.vfyjxf.taffy.style.TaffyPosition.ABSOLUTE)
-                        .right(0).top(0).width(300).heightPercent(100));
+                        .right(8).top(36).width(280).heightPercent(80));
         root.addChildren(toastContainer);
 
         var toastLayer = new ToastLayer(toastContainer);

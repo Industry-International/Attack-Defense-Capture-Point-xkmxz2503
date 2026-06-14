@@ -4,6 +4,7 @@ import com.lowdragmc.lowdraglib2.gui.texture.ColorRectTexture;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayDeque;
@@ -12,6 +13,7 @@ import java.util.Queue;
 /**
  * 通知气泡 - 从右侧滑入的 QQ 聊天气泡风格提示。
  * 支持成功(绿色)、错误(红色)、信息(蓝色)三种类型。
+ * 大小跟随 GUI 缩放自动适配。
  */
 public class ToastNotification {
 
@@ -32,8 +34,23 @@ public class ToastNotification {
 
     private static final Queue<PendingToast> PENDING_QUEUE = new ArrayDeque<>();
     private static final int TOAST_SHOW_TICKS = 80; // 约4秒 (20 ticks/秒)
-    private static final int TOAST_WIDTH = 260;
-    private static final int TOAST_HEIGHT = 36;
+
+    /** 根据屏幕 GUI 缩放计算气泡宽度：屏幕宽度的 28%，160~240px 之间 */
+    public static int getDynamicWidth() {
+        var mc = Minecraft.getInstance();
+        int scw = mc.getWindow().getGuiScaledWidth();
+        return Math.max(Math.min(scw * 28 / 100, 240), 160);
+    }
+
+    /** 根据宽度等比计算高度 */
+    public static int getDynamicHeight() {
+        return Math.max(getDynamicWidth() * 3 / 20, 24);
+    }
+
+    /** 根据宽度等比计算字号 */
+    public static float getDynamicFontSize() {
+        return Math.max(getDynamicWidth() * 5.0f / 100, 9.0f);
+    }
 
     /**
      * 添加一个待显示的通知。
@@ -70,13 +87,17 @@ public class ToastNotification {
      * @return 创建的气泡元素
      */
     static UIElement createBubble(UIElement parent, Type type, Component message) {
+        int tw = getDynamicWidth();
+        int th = getDynamicHeight();
+        float fs = getDynamicFontSize();
+
         var bubble = new UIElement()
                 .layout(l -> {
                     l.positionType(dev.vfyjxf.taffy.style.TaffyPosition.ABSOLUTE);
-                    l.right(-TOAST_WIDTH - 20); // 初始在屏幕外（右侧）
-                    l.top(10);
-                    l.width(TOAST_WIDTH).height(TOAST_HEIGHT);
-                    l.paddingAll(6);
+                    l.right(-tw - 20); // 初始在屏幕外（右侧）
+                    l.top(8);
+                    l.width(tw).height(th);
+                    l.paddingAll(Math.max(th / 6, 4));
                 })
                 .style(s -> s.background(Sprites.BORDER)
                         .backgroundTexture(new ColorRectTexture(type.bgColor)));
@@ -85,7 +106,7 @@ public class ToastNotification {
         var colorBar = new UIElement()
                 .layout(l -> {
                     l.positionType(dev.vfyjxf.taffy.style.TaffyPosition.ABSOLUTE);
-                    l.left(0).top(2).bottom(2).width(4);
+                    l.left(0).top(2).bottom(2).width(Math.max(th / 8, 3));
                 })
                 .style(s -> s.backgroundTexture(new ColorRectTexture(type.borderColor)));
 
@@ -93,10 +114,10 @@ public class ToastNotification {
         var label = new Label().setText(message);
         label.layout(l -> {
             l.widthPercent(100).heightPercent(100);
-            l.paddingLeft(8);
+            l.paddingLeft(Math.max(th / 4, 6));
         });
         label.textStyle(s -> {
-            s.fontSize(12.0f);
+            s.fontSize(fs);
             s.textColor(0xFFFFFFFF);
             s.textShadow(true);
         });

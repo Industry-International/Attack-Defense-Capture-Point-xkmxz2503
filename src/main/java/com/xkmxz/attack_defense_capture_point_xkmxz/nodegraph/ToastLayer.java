@@ -12,6 +12,7 @@ import java.util.Queue;
 /**
  * 通知层 - 管理所有活跃通知的动画生命周期（滑入、停留、滑出）。
  * 需要由 GraphView 的 screenTick() 驱动。
+ * 大小跟随 GUI 缩放自动适配，滑出方向为向右。
  */
 public class ToastLayer {
 
@@ -19,8 +20,7 @@ public class ToastLayer {
     private static final int SHOW_TICKS = 60;      // 停留帧数（约3秒）
     private static final int SLIDE_OUT_TICKS = 10; // 滑出动画帧数
     private static final int TOTAL_TICKS = SLIDE_IN_TICKS + SHOW_TICKS + SLIDE_OUT_TICKS;
-    private static final int TOAST_WIDTH = 260;
-    private static final int TOAST_GAP = 8;        // 气泡间距
+    private static final int TOAST_GAP = 6;        // 气泡间距
 
     private final UIElement parent;
     private final List<ActiveBubble> activeBubbles = new ArrayList<>();
@@ -29,10 +29,18 @@ public class ToastLayer {
         this.parent = parent;
     }
 
+    /** 获取当前动态的气泡宽度（委托给 ToastNotification） */
+    private int tw() { return ToastNotification.getDynamicWidth(); }
+    /** 获取当前动态的气泡高度 */
+    private int th() { return ToastNotification.getDynamicHeight(); }
+
     /**
      * 每帧调用，处理待显示通知和动画更新。
      */
     public void tick() {
+        int toastW = tw();
+        int toastH = th();
+
         // 从队列中获取新通知
         Queue<ToastNotification.PendingToast> pending = ToastNotification.drainPending();
         if (!pending.isEmpty()) {
@@ -40,7 +48,7 @@ public class ToastLayer {
             for (var pt : pending) {
                 var bubble = ToastNotification.createBubble(parent, pt.type(), pt.message());
                 activeBubbles.add(new ActiveBubble(bubble, 0, baseOffset));
-                baseOffset += TOAST_WIDTH + TOAST_GAP;
+                baseOffset += toastH + TOAST_GAP;
             }
         }
 
@@ -51,20 +59,20 @@ public class ToastLayer {
             ab.tick++;
 
             if (ab.tick < SLIDE_IN_TICKS) {
-                // 滑入阶段: right 从 -(TOAST_WIDTH+20) 到 10
+                // 滑入阶段: right 从 -(toastW+20) 到 10（从右侧滑入）
                 float progress = (float) ab.tick / SLIDE_IN_TICKS;
-                float right = -(TOAST_WIDTH + 20) * (1 - progress) + 10 * progress;
+                float right = -(toastW + 20) * (1 - progress) + 10 * progress;
                 ab.element.layout(l -> l.right(right));
             } else if (ab.tick < SLIDE_IN_TICKS + SHOW_TICKS) {
                 // 停留阶段: right = 10
                 ab.element.layout(l -> l.right(10f));
                 // 更新垂直偏移（适应新的通知）
-                float top = 10 + ab.baseOffset;
+                float top = 8 + ab.baseOffset;
                 ab.element.layout(l -> l.top(top));
             } else if (ab.tick < TOTAL_TICKS) {
-                // 滑出阶段: right 从 10 到 TOAST_WIDTH+20
+                // 滑出阶段: right 从 10 回到 -(toastW+20)（向右滑出，不与右上角按钮重叠）
                 float progress = (float) (ab.tick - SLIDE_IN_TICKS - SHOW_TICKS) / SLIDE_OUT_TICKS;
-                float right = 10 + (TOAST_WIDTH + 20) * progress;
+                float right = 10 + (-(toastW + 20) - 10) * progress;
                 ab.element.layout(l -> l.right(right));
             } else {
                 // 结束: 从父容器移除
@@ -80,7 +88,7 @@ public class ToastLayer {
     private int computeTotalHeight() {
         int total = 0;
         for (var ab : activeBubbles) {
-            total += TOAST_WIDTH + TOAST_GAP;
+            total += th() + TOAST_GAP;
         }
         return total;
     }
