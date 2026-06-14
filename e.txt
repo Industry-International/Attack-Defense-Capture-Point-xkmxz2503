@@ -1,0 +1,28 @@
+D:\开发\攻防战地图\Attack-Defense-Capture-Point-xkmxz2503\src\main\java\com\xkmxz\attack_defense_capture_point_xkmxz\gui\ControlPanelUI.java:121: 错误: 已在方法 open()中定义了变量 sw
+        var sw = new UIElement().layout(l -> l.justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER).widthPercent(100));
+            ^
+D:\开发\攻防战地图\Attack-Defense-Capture-Point-xkmxz2503\src\main\java\com\xkmxz\attack_defense_capture_point_xkmxz\gui\ControlPanelUI.java:131: 错误: 二元运算符 '-' 的操作数类型错误
+        int ox = (sw - gw) / 2, oy = (sh - gh) / 2;
+                     ^
+  第一个类型:  UIElement
+  第二个类型: int
+D:\开发\攻防战地图\Attack-Defense-Capture-Point-xkmxz2503\src\main\java\com\xkmxz\attack_defense_capture_point_xkmxz\gui\ControlPanelUI.java:132: 错误: 对于width(UIElement), 找不到合适的方法
+        var wrap = new UIElement().layout(l -> l.width(sw).height(sh).paddingAll(0).gapAll(0)
+                                                ^
+    方法 LayoutStyle.width(StyleSizeLength)不适用
+      (参数不匹配; UIElement无法转换为StyleSizeLength)
+    方法 LayoutStyle.width(float)不适用
+      (参数不匹配; UIElement无法转换为float)
+3 个错误
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 1s

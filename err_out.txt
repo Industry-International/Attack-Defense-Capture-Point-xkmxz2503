@@ -1,0 +1,16 @@
+D:\开发\攻防战地图\Attack-Defense-Capture-Point-xkmxz2503\src\main\java\com\xkmxz\attack_defense_capture_point_xkmxz\gui\ControlPanelUI.java:119: 错误: 已在方法 open()中定义了变量 sw
+        var sw = new UIElement().layout(l -> l.justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER).widthPercent(100));
+            ^
+1 个错误
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 1s
