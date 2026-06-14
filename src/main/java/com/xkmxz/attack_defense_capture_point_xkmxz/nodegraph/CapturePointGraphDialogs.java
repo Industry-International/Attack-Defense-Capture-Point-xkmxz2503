@@ -10,6 +10,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
+import com.xkmxz.attack_defense_capture_point_xkmxz.manager.ICaptureDataAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -1019,17 +1020,17 @@ public final class CapturePointGraphDialogs {
     }
 
     /**
-     * 获取服务端 CaptureManager（单机可用，服务端回退到命令）。
+     * 获取服务端统一数据访问接口（单机可用，服务端回退到命令）。
      */
     @org.jetbrains.annotations.Nullable
-    private static com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager getManager(Level level) {
+    private static ICaptureDataAccess getManager(Level level) {
         if (level instanceof net.minecraft.server.level.ServerLevel sl) {
-            return com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager.get(sl);
+            return ICaptureDataAccess.server(sl);
         }
         var mc = Minecraft.getInstance();
         if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
-            return com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager.get(
-                    mc.getSingleplayerServer().getLevel(level.dimension()));
+            var sl = mc.getSingleplayerServer().getLevel(level.dimension());
+            if (sl != null) return ICaptureDataAccess.server(sl);
         }
         return null;
     }

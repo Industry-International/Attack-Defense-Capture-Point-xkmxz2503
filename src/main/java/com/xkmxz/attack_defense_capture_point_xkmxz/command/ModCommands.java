@@ -8,7 +8,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
+import com.xkmxz.attack_defense_capture_point_xkmxz.manager.ICaptureDataAccess;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -200,8 +200,8 @@ public class ModCommands {
 
     private static CompletableFuture<Suggestions> suggestPoints(CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
         try {
-            var manager = CaptureManager.get(ctx.getSource().getLevel());
-            for (var name : manager.getPoints().keySet()) {
+            var access = ICaptureDataAccess.server(ctx.getSource().getLevel());
+            for (var name : access.getPoints().keySet()) {
                 if (name.startsWith(builder.getRemaining())) {
                     builder.suggest(name);
                 }
@@ -212,8 +212,8 @@ public class ModCommands {
 
     private static CompletableFuture<Suggestions> suggestZones(CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
         try {
-            var manager = CaptureManager.get(ctx.getSource().getLevel());
-            for (var name : manager.getZones().keySet()) {
+            var access = ICaptureDataAccess.server(ctx.getSource().getLevel());
+            for (var name : access.getZones().keySet()) {
                 if (name.startsWith(builder.getRemaining())) {
                     builder.suggest(name);
                 }
@@ -235,7 +235,7 @@ public class ModCommands {
 
         var level = source.getLevel();
         var pos = player.blockPosition();
-        var manager = CaptureManager.get(level);
+        var manager = ICaptureDataAccess.server(level);
         manager.addOrUpdatePoint(name, pos);
 
         source.sendSuccess(() -> Component.translatable("command.capturepoint.create.success", name, pos.getX(), pos.getY(), pos.getZ()), true);
@@ -245,7 +245,7 @@ public class ModCommands {
     private static int removePoint(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
         var name = StringArgumentType.getString(ctx, "name");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (manager.getPoints().containsKey(name)) {
             manager.removePoint(name);
@@ -264,7 +264,7 @@ public class ModCommands {
     private static int setOwner(CommandContext<CommandSourceStack> ctx, @org.jetbrains.annotations.Nullable String owner) {
         var source = ctx.getSource();
         var name = StringArgumentType.getString(ctx, "name");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (!manager.getPoints().containsKey(name)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.not_found", name));
@@ -282,7 +282,7 @@ public class ModCommands {
 
     private static int listAll(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         source.sendSuccess(() -> Component.translatable("command.capturepoint.list.header"), false);
 
@@ -314,7 +314,7 @@ public class ModCommands {
     private static int createZone(CommandContext<CommandSourceStack> ctx, @org.jetbrains.annotations.Nullable String requiredZone) {
         var source = ctx.getSource();
         var zoneName = StringArgumentType.getString(ctx, "zoneName");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (manager.getZones().containsKey(zoneName)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.zone_exists", zoneName));
@@ -333,7 +333,7 @@ public class ModCommands {
     private static int removeZone(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
         var zoneName = StringArgumentType.getString(ctx, "zoneName");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (manager.getZones().containsKey(zoneName)) {
             manager.removeZone(zoneName);
@@ -349,7 +349,7 @@ public class ModCommands {
         var source = ctx.getSource();
         var zoneName = StringArgumentType.getString(ctx, "zoneName");
         var pointName = StringArgumentType.getString(ctx, "pointName");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (!manager.getZones().containsKey(zoneName)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.zone_not_found", zoneName));
@@ -369,7 +369,7 @@ public class ModCommands {
         var source = ctx.getSource();
         var zoneName = StringArgumentType.getString(ctx, "zoneName");
         var pointName = StringArgumentType.getString(ctx, "pointName");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         manager.removePointFromZone(zoneName, pointName);
         source.sendSuccess(() -> Component.translatable("command.capturepoint.zone.removepoint.success", pointName, zoneName), true);
@@ -378,7 +378,7 @@ public class ModCommands {
 
     private static int zoneStatus(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
         var zones = manager.getZones();
 
         if (zones.isEmpty()) {
@@ -412,7 +412,7 @@ public class ModCommands {
         var y = IntegerArgumentType.getInteger(ctx, "y");
         var z = IntegerArgumentType.getInteger(ctx, "z");
 
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (manager.getPoints().containsKey(name)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.point_exists", name));
@@ -432,7 +432,7 @@ public class ModCommands {
         var source = ctx.getSource();
         var name = StringArgumentType.getString(ctx, "name");
         var radius = DoubleArgumentType.getDouble(ctx, "radius");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (!manager.getPoints().containsKey(name)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.not_found", name));
@@ -451,7 +451,7 @@ public class ModCommands {
         var source = ctx.getSource();
         var name = StringArgumentType.getString(ctx, "name");
         var color = IntegerArgumentType.getInteger(ctx, "color");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (!manager.getPoints().containsKey(name)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.not_found", name));
@@ -470,7 +470,7 @@ public class ModCommands {
         var source = ctx.getSource();
         var name = StringArgumentType.getString(ctx, "name");
         var show = BoolArgumentType.getBool(ctx, "show");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (!manager.getPoints().containsKey(name)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.not_found", name));
@@ -492,7 +492,7 @@ public class ModCommands {
     private static int removePointFromAllZones(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
         var name = StringArgumentType.getString(ctx, "name");
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (!manager.getPoints().containsKey(name)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.not_found", name));
@@ -528,7 +528,7 @@ public class ModCommands {
 
     private static int setZoneRequired(CommandContext<CommandSourceStack> ctx, String zoneName, @org.jetbrains.annotations.Nullable String requiredZone) {
         var source = ctx.getSource();
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         if (!manager.getZones().containsKey(zoneName)) {
             source.sendFailure(Component.translatable("command.capturepoint.error.zone_not_found", zoneName));
@@ -549,7 +549,7 @@ public class ModCommands {
      */
     private static int showRelationships(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
-        var manager = CaptureManager.get(source.getLevel());
+        var manager = ICaptureDataAccess.server(source.getLevel());
 
         source.sendSuccess(() -> Component.translatable("command.capturepoint.relationships.header"), false);
 

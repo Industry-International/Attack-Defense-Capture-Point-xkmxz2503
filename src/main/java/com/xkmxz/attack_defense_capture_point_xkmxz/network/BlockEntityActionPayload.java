@@ -1,7 +1,7 @@
 package com.xkmxz.attack_defense_capture_point_xkmxz.network;
 
 import com.xkmxz.attack_defense_capture_point_xkmxz.Attack_defense_capture_point_xkmxz;
-import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
+import com.xkmxz.attack_defense_capture_point_xkmxz.manager.ICaptureDataAccess;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -57,27 +57,26 @@ public record BlockEntityActionPayload(
             var level = serverPlayer.serverLevel();
             if (!(level instanceof ServerLevel serverLevel)) return;
 
-            var mgr = CaptureManager.get(serverLevel);
-            if (mgr == null) return;
+            var access = ICaptureDataAccess.server(serverLevel);
 
             String[] parts = payload.data().split(",", -1);
 
             switch (payload.action()) {
                 case "create_point" -> {
                     String name = parts[0];
-                    if (!name.isEmpty() && !mgr.getPoints().containsKey(name)) {
-                        mgr.addOrUpdatePoint(name, payload.blockPos());
+                    if (!name.isEmpty() && !access.getPoints().containsKey(name)) {
+                        access.addOrUpdatePoint(name, payload.blockPos());
                     }
                 }
                 case "create_point_at" -> {
                     String name = parts[0];
-                    if (parts.length >= 5 && !name.isEmpty() && !mgr.getPoints().containsKey(name)) {
+                    if (parts.length >= 5 && !name.isEmpty() && !access.getPoints().containsKey(name)) {
                         try {
                             int x = Integer.parseInt(parts[1]);
                             int y = Integer.parseInt(parts[2]);
                             int z = Integer.parseInt(parts[3]);
                             double rad = Double.parseDouble(parts[4]);
-                            mgr.addOrUpdatePointWithRadius(name, new BlockPos(x, y, z), rad);
+                            access.addOrUpdatePointWithRadius(name, new BlockPos(x, y, z), rad);
                         } catch (NumberFormatException ignored) {}
                     }
                 }
@@ -86,7 +85,7 @@ public record BlockEntityActionPayload(
                     if (parts.length >= 2) {
                         try {
                             double rad = Double.parseDouble(parts[1]);
-                            mgr.setPointRadius(name, rad);
+                            access.setPointRadius(name, rad);
                         } catch (NumberFormatException ignored) {}
                     }
                 }
@@ -95,7 +94,7 @@ public record BlockEntityActionPayload(
                     if (parts.length >= 2) {
                         try {
                             int color = Integer.parseInt(parts[1]);
-                            mgr.setPointDisplayColor(name, color);
+                            access.setPointDisplayColor(name, color);
                         } catch (NumberFormatException ignored) {}
                     }
                 }
@@ -103,21 +102,21 @@ public record BlockEntityActionPayload(
                     String name = parts[0];
                     if (parts.length >= 2) {
                         boolean show = Boolean.parseBoolean(parts[1]);
-                        mgr.setPointShowRange(name, show);
+                        access.setPointShowRange(name, show);
                     }
                 }
                 case "add_to_zone" -> {
                     if (parts.length >= 2) {
                         String zoneName = parts[0];
                         String pointName = parts[1];
-                        mgr.addPointToZone(zoneName, pointName);
+                        access.addPointToZone(zoneName, pointName);
                     }
                 }
                 case "remove_from_zone" -> {
                     String name = parts[0];
-                    String zoneName = mgr.findZoneForPoint(name);
+                    String zoneName = access.findZoneForPoint(name);
                     if (zoneName != null) {
-                        mgr.removePointFromZone(zoneName, name);
+                        access.removePointFromZone(zoneName, name);
                     }
                 }
             }

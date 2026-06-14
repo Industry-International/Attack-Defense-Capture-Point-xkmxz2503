@@ -15,6 +15,7 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.PortModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.wire.WireModel;
 import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
+import com.xkmxz.attack_defense_capture_point_xkmxz.manager.ICaptureDataAccess;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -377,7 +378,7 @@ public class CapturePointGraphScreen {
     /**
      * 打开版本冲突对话框，询问用户是否覆盖外部修改的数据。
      */
-    private void openConflictDialog(CaptureManager mgr,
+    private void openConflictDialog(ICaptureDataAccess access,
                                      Map<String, CaptureManager.CapturePointEntry> newPoints,
                                      Map<String, CaptureManager.ZoneEntry> newZones) {
         var mc = mc();
@@ -408,7 +409,7 @@ public class CapturePointGraphScreen {
                 Component.translatable("gui.capture_point_graph.dialog.conflict.overwrite"));
         overwriteBtn.layout(l -> l.flex(1).heightPercent(100));
         overwriteBtn.setOnClick(e -> {
-            mgr.applyGraphSnapshot(newPoints, newZones);
+            access.applyGraphSnapshot(newPoints, newZones);
             ToastNotification.push(ToastNotification.Type.SUCCESS,
                     Component.translatable("toast.capture_point_graph.saved"));
             mc.setScreen(null);
@@ -666,8 +667,8 @@ public class CapturePointGraphScreen {
      */
     private void registerOptionChangeListeners() {
         try {
-            var mgr = getServerCaptureManager();
-            if (mgr == null) return;
+            var access = getServerCaptureManager();
+            if (access == null) return;
 
             for (var element : graph.graphModel.getGraphElementModels()) {
                 if (element instanceof NodeModel nm) {
@@ -683,7 +684,7 @@ public class CapturePointGraphScreen {
                             constant.addListener(newValue -> {
                                 // 正在从游戏同步时不触发回写
                                 if (isSyncingFromGame) return;
-                                onOptionValueChanged(mgr, name, isPointNode, optId, newValue);
+                                onOptionValueChanged(access, name, isPointNode, optId, newValue);
                             });
                         }
                     }
@@ -698,7 +699,7 @@ public class CapturePointGraphScreen {
      * 所有改动通过 "保存" 按钮的 buildSnapshotFromGraph → applyGraphSnapshot 批量写入。
      * 非编辑模式：忽略回写（只读显示）。
      */
-    private void onOptionValueChanged(CaptureManager mgr, String nodeName, boolean isPointNode,
+    private void onOptionValueChanged(ICaptureDataAccess access, String nodeName, boolean isPointNode,
                                        String optionId, Object newValue) {
         // 编辑模式下变更仅存储于节点模型的本地 Constant 中，
         // 等待用户点击"保存"时通过 buildSnapshotFromGraph → applyGraphSnapshot 批量写入。
@@ -718,12 +719,13 @@ public class CapturePointGraphScreen {
         return null;
     }
 
-    /** 获取服务端 CaptureManager（单机/服务端均可用） */
-    private CaptureManager getServerCaptureManager() {
-        if (level instanceof ServerLevel sl) return CaptureManager.get(sl);
+    /** 获取服务端统一数据访问接口（单机/服务端均可用） */
+    private ICaptureDataAccess getServerCaptureManager() {
+        if (level instanceof ServerLevel sl) return ICaptureDataAccess.server(sl);
         var mc = mc();
         if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
-            return CaptureManager.get(mc.getSingleplayerServer().getLevel(level.dimension()));
+            var sl = mc.getSingleplayerServer().getLevel(level.dimension());
+            if (sl != null) return ICaptureDataAccess.server(sl);
         }
         return null;
     }
