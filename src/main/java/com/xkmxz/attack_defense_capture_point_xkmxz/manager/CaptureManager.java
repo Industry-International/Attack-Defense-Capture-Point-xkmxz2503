@@ -213,6 +213,20 @@ public class CaptureManager extends SavedData {
         }
     }
 
+    /**
+     * 查找包含指定据点的区域名称。
+     * @return 区域名称，如果据点不属于任何区域则返回 null
+     */
+    @Nullable
+    public String findZoneForPoint(String pointName) {
+        for (var entry : zones.entrySet()) {
+            if (entry.getValue().capturePoints().contains(pointName)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
     public boolean isZoneCaptured(String zoneName) {
         var zone = zones.get(zoneName);
         if (zone == null) return false;

@@ -123,6 +123,7 @@
   "gui.capture_point_block.func3": "[3] 查看据点状态",
   "gui.capture_point_block.func4": "[4] 设定据点半径",
   "gui.capture_point_block.func5": "[5] 切换范围显示",
+  "gui.capture_point_block.func6": "[6] 移除绑定",
 
   "gui.capture_point_block.dialog.radius.title": "设定据点半径",
   "gui.capture_point_block.dialog.radius.label": "输入半径 (1-100):",
@@ -130,6 +131,9 @@
   "gui.capture_point_block.dialog.color_picker.hint": "点击选择一个颜色。范围显示已开启。",
   "gui.capture_point_block.dialog.disable_range": "关闭范围显示",
   "gui.capture_point_block.dialog.select_zone": "选择一个区域:",
+  "gui.capture_point_block.dialog.unbind.title": "移除绑定",
+  "gui.capture_point_block.dialog.unbind.block": "移除此方块与据点的绑定",
+  "gui.capture_point_block.dialog.unbind.zone": "移除据点与区域的绑定",
 
   "toast.capture_point_block.already_bound": "已绑定到据点 '%s'",
   "toast.capture_point_block.created": "已创建据点 '%s'",
@@ -146,5 +150,10 @@
   "toast.capture_point_block.range_on": "范围显示已开启",
   "toast.capture_point_block.range_off": "范围显示已关闭",
   "toast.capture_point_block.bound_to_zone": "据点 '%s' 已添加到区域 '%s'",
-  "toast.capture_point_block.no_zones": "没有可用区域，请先在节点图编辑器中创建。"
+  "toast.capture_point_block.no_zones": "没有可用区域，请先在节点图编辑器中创建。",
+  "toast.capture_point_block.unbind_block": "已移除此方块与据点的绑定",
+  "toast.capture_point_block.unbind_zone": "已将据点 '%s' 从区域中移除",
+
+  "command.capturepoint.removefromallzones.success": "已将 '%s' 从区域 '%s' 中移除",
+  "command.capturepoint.removefromallzones.not_in_zone": "'%s' 不在任何区域中"
 }

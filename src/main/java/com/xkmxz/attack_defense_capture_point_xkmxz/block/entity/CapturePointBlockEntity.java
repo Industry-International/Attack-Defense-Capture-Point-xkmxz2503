@@ -127,10 +127,11 @@ public class CapturePointBlockEntity extends BlockEntity {
         // 紧凑尺寸
         int btnH = 22;
         int gap = 3;
-        int titleH = 16;
+        int titleH = 14;  // 标题行高
+        int statusH = 12; // 绑定状态行高
         int bottomH = 20;
         int pad = 6;
-        int panelH = pad + titleH + gap + 5 * (btnH + gap) + bottomH + pad;
+        int panelH = pad + titleH + statusH + gap + 6 * (btnH + gap) + bottomH + pad;
 
         int bg = 0xFF1A1A2E;
         int btnBg = 0xFF16213E;
@@ -141,19 +142,17 @@ public class CapturePointBlockEntity extends BlockEntity {
                 .style(s -> s.background(Sprites.BORDER)
                         .backgroundTexture(new ColorRectTexture(bg)));
 
-        // ---- 标题行（紧凑） ----
-        var titleRow = new UIElement()
-                .layout(l -> l.widthPercent(100).height(titleH)
-                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(3));
+        // ---- 标题区域：标题在上，绑定状态在下 ----
         var titleLabel = new Label().setText(Component.translatable("gui.capture_point_block.menu.title"));
-        titleLabel.layout(l -> l.widthAuto().heightPercent(100));
+        titleLabel.layout(l -> l.widthPercent(100).height(titleH));
         titleLabel.textStyle(s -> s.fontSize(10.0f).textColor(0xFFAAAAAA));
+        root.addChildren(titleLabel);
+
         var boundLabel = new Label();
         updateBoundLabel(boundLabel);
-        boundLabel.layout(l -> l.widthAuto().heightPercent(100));
-        boundLabel.textStyle(s -> s.fontSize(10.0f));
-        titleRow.addChildren(titleLabel, boundLabel);
-        root.addChildren(titleRow);
+        boundLabel.layout(l -> l.widthPercent(100).height(statusH));
+        boundLabel.textStyle(s -> s.fontSize(9.0f).textColor(0xFF888888));
+        root.addChildren(boundLabel);
 
         // ---- 功能按钮（紧凑） ----
         root.addChildren(createFuncButton(btnBg, btnH,
@@ -166,6 +165,8 @@ public class CapturePointBlockEntity extends BlockEntity {
                 "gui.capture_point_block.func4", () -> funcSetRadius(mc)));
         root.addChildren(createFuncButton(btnBg, btnH,
                 "gui.capture_point_block.func5", () -> funcToggleShowRange(mc)));
+        root.addChildren(createFuncButton(btnBg, btnH,
+                "gui.capture_point_block.func6", () -> funcRemoveBinding(mc)));
 
         // ---- 底部按钮行（紧凑） ----
         var bottomRow = new UIElement()
@@ -376,6 +377,74 @@ public class CapturePointBlockEntity extends BlockEntity {
                     Component.translatable("toast.capture_point_block.range_off"));
             reopenMenu();
         }
+    }
+
+    /**
+     * 功能6: 移除绑定 — 打开子菜单选择操作。
+     * a) 移除本方块与据点的绑定（不清除服务端据点数据）
+     * b) 移除已绑定据点与区域的绑定（从区域中移除该据点）
+     */
+    private void funcRemoveBinding(Minecraft mc) {
+        if (boundPointName.isEmpty()) {
+            ToastNotification.push(ToastNotification.Type.ERROR,
+                    Component.translatable("toast.capture_point_block.not_bound"));
+            reopenMenu();
+            return;
+        }
+
+        int dw = 260, dh = 110;
+        var root = new UIElement()
+                .layout(l -> l.width(dw).height(dh).paddingAll(10).gapAll(6)
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN))
+                .style(s -> s.background(Sprites.BORDER)
+                        .backgroundTexture(new ColorRectTexture(0xFF1A1A2E)));
+
+        var title = new Label().setText(Component.translatable("gui.capture_point_block.dialog.unbind.title"));
+        title.layout(l -> l.widthPercent(100).heightAuto());
+        root.addChildren(title);
+
+        var unbindBlockBtn = new Button().setText(Component.translatable("gui.capture_point_block.dialog.unbind.block"));
+        unbindBlockBtn.layout(l -> l.widthPercent(100).height(24));
+        unbindBlockBtn.setOnClick(e -> {
+            // 仅清除方块实体的绑定，不删除服务端据点
+            boundPointName = "";
+            setChanged();
+            syncToClient();
+            ToastNotification.push(ToastNotification.Type.SUCCESS,
+                    Component.translatable("toast.capture_point_block.unbind_block"));
+            mc.setScreen(null);
+            reopenMenu();
+        });
+        root.addChildren(unbindBlockBtn);
+
+        var unbindZoneBtn = new Button().setText(Component.translatable("gui.capture_point_block.dialog.unbind.zone"));
+        unbindZoneBtn.layout(l -> l.widthPercent(100).height(24));
+        unbindZoneBtn.setOnClick(e -> {
+            var player = mc.player;
+            if (player != null) {
+                // 查找据点所属区域，从区域中移除
+                String currentName = boundPointName;
+                // 通过命令移除，由服务端 CaptureManager 处理
+                player.connection.sendCommand("capturepoint removefromallzones " + currentName);
+                ToastNotification.push(ToastNotification.Type.SUCCESS,
+                        Component.translatable("toast.capture_point_block.unbind_zone", currentName));
+            }
+            mc.setScreen(null);
+            reopenMenu();
+        });
+        root.addChildren(unbindZoneBtn);
+
+        var cancelBtn = new Button().setText(Component.translatable("gui.capture_point_graph.dialog.cancel"));
+        cancelBtn.layout(l -> l.widthPercent(100).height(20));
+        cancelBtn.setOnClick(e -> {
+            mc.setScreen(null);
+            reopenMenu();
+        });
+        root.addChildren(cancelBtn);
+
+        var ui = ModularUI.of(UI.of(root));
+        mc.setScreen(new ModularUIScreen(ui,
+                Component.translatable("gui.capture_point_block.dialog.unbind.title")));
     }
 
     // ================================================================

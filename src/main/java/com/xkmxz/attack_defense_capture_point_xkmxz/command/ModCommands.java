@@ -109,6 +109,11 @@ public class ModCommands {
                                 .suggests(ModCommands::suggestPoints)
                                 .then(Commands.argument("show", BoolArgumentType.bool())
                                         .executes(ModCommands::togglePointRange))))
+
+                .then(Commands.literal("removefromallzones")
+                        .then(Commands.argument("name", StringArgumentType.word())
+                                .suggests(ModCommands::suggestPoints)
+                                .executes(ModCommands::removePointFromAllZones)))
         );
     }
 
@@ -435,6 +440,30 @@ public class ModCommands {
         } else {
             source.sendSuccess(() -> Component.translatable("command.capturepoint.settoggle.off", name), true);
         }
+        return 1;
+    }
+
+    /**
+     * 将据点从所有区域中移除。
+     */
+    private static int removePointFromAllZones(CommandContext<CommandSourceStack> ctx) {
+        var source = ctx.getSource();
+        var name = StringArgumentType.getString(ctx, "name");
+        var manager = CaptureManager.get(source.getLevel());
+
+        if (!manager.getPoints().containsKey(name)) {
+            source.sendFailure(Component.translatable("command.capturepoint.error.not_found", name));
+            return 0;
+        }
+
+        String zoneName = manager.findZoneForPoint(name);
+        if (zoneName == null) {
+            source.sendSuccess(() -> Component.translatable("command.capturepoint.removefromallzones.not_in_zone", name), true);
+            return 1;
+        }
+
+        manager.removePointFromZone(zoneName, name);
+        source.sendSuccess(() -> Component.translatable("command.capturepoint.removefromallzones.success", name, zoneName), true);
         return 1;
     }
 }
