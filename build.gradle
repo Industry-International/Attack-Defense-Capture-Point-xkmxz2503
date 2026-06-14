@@ -108,6 +108,11 @@ dependencies {
     // Example project dependency using a sister or child project:
     // implementation project(":myproject")
 
+    implementation files("libs/[输入法冲突修复] IMBlocker-5.5.4-neoforge+1.20.6-1.21.8.jar")
+    implementation files("libs/[Xaero的世界地图] xaeroworldmap-neoforge-1.21.1-1.41.0.jar")
+    implementation files("libs/[Xaero的小地图] xaerominimap-neoforge-1.21.1-26.1.0.jar")
+
+
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
