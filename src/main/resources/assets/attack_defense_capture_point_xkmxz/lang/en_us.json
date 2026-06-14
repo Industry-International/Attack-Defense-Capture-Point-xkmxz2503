@@ -95,6 +95,7 @@
   "gui.capture_point_graph.menu.create_point": "Create Point",
   "gui.capture_point_graph.menu.create_zone": "Create Zone",
   "gui.capture_point_graph.menu.delete": "Delete",
+  "gui.capture_point_graph.menu.advanced_config": "Advanced Config",
   "gui.capture_point_graph.menu.list_status": "Show Status",
   "gui.capture_point_graph.menu.refresh": "Refresh",
   "gui.capture_point_graph.menu.close": "Close",
@@ -112,6 +113,16 @@
   "gui.capture_point_graph.dialog.delete_point.message": "Delete capture point '%s'?",
   "gui.capture_point_graph.dialog.delete_zone.title": "Delete Zone",
   "gui.capture_point_graph.dialog.delete_zone.message": "Delete zone '%s'?",
+
+  "gui.capture_point_graph.dialog.advanced_config.title": "Advanced Configuration - %s",
+  "gui.capture_point_graph.dialog.advanced_config.info": "Point: %s | Position: [%d, %d, %d]",
+  "gui.capture_point_graph.dialog.advanced_config.owner": "Owner:",
+  "gui.capture_point_graph.dialog.advanced_config.radius": "Radius (1-100):",
+  "gui.capture_point_graph.dialog.advanced_config.show_range": "Show Range:",
+  "gui.capture_point_graph.dialog.advanced_config.color": "Display Color:",
+  "gui.capture_point_graph.dialog.advanced_config.save": "Save",
+  "gui.capture_point_graph.dialog.advanced_config.toggle.on": "ON",
+  "gui.capture_point_graph.dialog.advanced_config.toggle.off": "OFF",
 
   "toast.capture_point.create.success": "Created capture point '%s'",
   "toast.capture_point.create.empty": "Point name cannot be empty",
@@ -165,5 +176,6 @@
   "command.capturepoint.removefromallzones.success": "Removed '%s' from zone '%s'",
   "command.capturepoint.removefromallzones.not_in_zone": "'%s' is not in any zone",
 
-  "toast.capture_point_graph.saved": "Graph saved successfully"
+  "toast.capture_point_graph.saved": "Graph saved successfully",
+  "toast.capture_point_graph.advanced_config.saved": "Configuration saved for '%s'"
 }

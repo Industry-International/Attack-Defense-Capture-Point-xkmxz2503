@@ -95,6 +95,7 @@
   "gui.capture_point_graph.menu.create_point": "创建据点",
   "gui.capture_point_graph.menu.create_zone": "创建区域",
   "gui.capture_point_graph.menu.delete": "删除",
+  "gui.capture_point_graph.menu.advanced_config": "高级配置",
   "gui.capture_point_graph.menu.list_status": "查看状态",
   "gui.capture_point_graph.menu.refresh": "刷新",
   "gui.capture_point_graph.menu.close": "关闭",
@@ -112,6 +113,16 @@
   "gui.capture_point_graph.dialog.delete_point.message": "确定要删除据点 '%s' 吗？",
   "gui.capture_point_graph.dialog.delete_zone.title": "删除区域",
   "gui.capture_point_graph.dialog.delete_zone.message": "确定要删除区域 '%s' 吗？",
+
+  "gui.capture_point_graph.dialog.advanced_config.title": "高级配置 - %s",
+  "gui.capture_point_graph.dialog.advanced_config.info": "据点: %s | 位置: [%d, %d, %d]",
+  "gui.capture_point_graph.dialog.advanced_config.owner": "所属:",
+  "gui.capture_point_graph.dialog.advanced_config.radius": "半径 (1-100):",
+  "gui.capture_point_graph.dialog.advanced_config.show_range": "显示范围:",
+  "gui.capture_point_graph.dialog.advanced_config.color": "显示颜色:",
+  "gui.capture_point_graph.dialog.advanced_config.save": "保存",
+  "gui.capture_point_graph.dialog.advanced_config.toggle.on": "开启",
+  "gui.capture_point_graph.dialog.advanced_config.toggle.off": "关闭",
 
   "toast.capture_point.create.success": "已创建据点 '%s'",
   "toast.capture_point.create.empty": "据点名称不能为空",
@@ -165,5 +176,6 @@
   "command.capturepoint.removefromallzones.success": "已将 '%s' 从区域 '%s' 中移除",
   "command.capturepoint.removefromallzones.not_in_zone": "'%s' 不在任何区域中",
 
-  "toast.capture_point_graph.saved": "节点图保存成功"
+  "toast.capture_point_graph.saved": "节点图保存成功",
+  "toast.capture_point_graph.advanced_config.saved": "据点 '%s' 的配置已保存"
 }

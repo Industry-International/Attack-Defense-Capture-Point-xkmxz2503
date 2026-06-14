@@ -159,6 +159,21 @@ public class CapturePointGraphView extends GraphView {
                             }
                         }
                     });
+
+            // 对选中节点添加"高级配置"项（仅据点节点）
+            for (var model : selectedModels) {
+                if (isPointModel(model)) {
+                    String pointName = model.getName();
+                    menu.leaf(
+                            Component.translatable("gui.capture_point_graph.menu.advanced_config").getString(),
+                            () -> {
+                                if (level != null) {
+                                    CapturePointGraphDialogs.openAdvancedConfigDialog(level, pointName);
+                                }
+                            });
+                }
+                break;
+            }
         }
 
         // 查看状态
@@ -205,6 +220,16 @@ public class CapturePointGraphView extends GraphView {
     private boolean isZoneModel(AbstractNodeModel model) {
         if (model instanceof INodeWithOptions opts) {
             return opts.getNodeOptionById("required_zone") != null;
+        }
+        return false;
+    }
+
+    /**
+     * 判断节点模型是否为据点节点（通过检查是否有 "owner" 选项）。
+     */
+    private boolean isPointModel(AbstractNodeModel model) {
+        if (model instanceof INodeWithOptions opts) {
+            return opts.getNodeOptionById("owner") != null;
         }
         return false;
     }
