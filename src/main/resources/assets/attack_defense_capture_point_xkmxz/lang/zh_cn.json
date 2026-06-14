@@ -76,5 +76,27 @@
   "gui.capture_point_graph.menu.delete": "删除",
   "gui.capture_point_graph.menu.list_status": "查看状态",
   "gui.capture_point_graph.menu.refresh": "刷新",
-  "gui.capture_point_graph.menu.close": "关闭"
+  "gui.capture_point_graph.menu.close": "关闭",
+
+  "gui.capture_point_graph.dialog.title": "输入",
+  "gui.capture_point_graph.dialog.confirm": "确认",
+  "gui.capture_point_graph.dialog.cancel": "取消",
+  "gui.capture_point_graph.dialog.create_point.title": "创建据点",
+  "gui.capture_point_graph.dialog.create_point.label": "输入据点名称:",
+  "gui.capture_point_graph.dialog.create_point.placeholder": "据点名称",
+  "gui.capture_point_graph.dialog.create_zone.title": "创建占领区域",
+  "gui.capture_point_graph.dialog.create_zone.label": "输入区域名称:",
+  "gui.capture_point_graph.dialog.create_zone.placeholder": "区域名称",
+  "gui.capture_point_graph.dialog.delete_point.title": "删除据点",
+  "gui.capture_point_graph.dialog.delete_point.message": "确定要删除据点 '%s' 吗？",
+  "gui.capture_point_graph.dialog.delete_zone.title": "删除区域",
+  "gui.capture_point_graph.dialog.delete_zone.message": "确定要删除区域 '%s' 吗？",
+
+  "toast.capture_point.create.success": "已创建据点 '%s'",
+  "toast.capture_point.create.empty": "据点名称不能为空",
+  "toast.capture_point.delete.success": "已删除据点 '%s'",
+  "toast.capture_zone.create.success": "已创建占领区域 '%s'",
+  "toast.capture_zone.create.empty": "区域名称不能为空",
+  "toast.capture_zone.delete.success": "已删除区域 '%s'",
+  "toast.delete.name_missing": "删除失败：缺少名称信息"
 }

@@ -76,5 +76,27 @@
   "gui.capture_point_graph.menu.delete": "Delete",
   "gui.capture_point_graph.menu.list_status": "Show Status",
   "gui.capture_point_graph.menu.refresh": "Refresh",
-  "gui.capture_point_graph.menu.close": "Close"
+  "gui.capture_point_graph.menu.close": "Close",
+
+  "gui.capture_point_graph.dialog.title": "Input",
+  "gui.capture_point_graph.dialog.confirm": "Confirm",
+  "gui.capture_point_graph.dialog.cancel": "Cancel",
+  "gui.capture_point_graph.dialog.create_point.title": "Create Capture Point",
+  "gui.capture_point_graph.dialog.create_point.label": "Enter point name:",
+  "gui.capture_point_graph.dialog.create_point.placeholder": "point_name",
+  "gui.capture_point_graph.dialog.create_zone.title": "Create Capture Zone",
+  "gui.capture_point_graph.dialog.create_zone.label": "Enter zone name:",
+  "gui.capture_point_graph.dialog.create_zone.placeholder": "zone_name",
+  "gui.capture_point_graph.dialog.delete_point.title": "Delete Point",
+  "gui.capture_point_graph.dialog.delete_point.message": "Delete capture point '%s'?",
+  "gui.capture_point_graph.dialog.delete_zone.title": "Delete Zone",
+  "gui.capture_point_graph.dialog.delete_zone.message": "Delete zone '%s'?",
+
+  "toast.capture_point.create.success": "Created capture point '%s'",
+  "toast.capture_point.create.empty": "Point name cannot be empty",
+  "toast.capture_point.delete.success": "Deleted capture point '%s'",
+  "toast.capture_zone.create.success": "Created capture zone '%s'",
+  "toast.capture_zone.create.empty": "Zone name cannot be empty",
+  "toast.capture_zone.delete.success": "Deleted zone '%s'",
+  "toast.delete.name_missing": "Cannot delete: name is missing"
 }

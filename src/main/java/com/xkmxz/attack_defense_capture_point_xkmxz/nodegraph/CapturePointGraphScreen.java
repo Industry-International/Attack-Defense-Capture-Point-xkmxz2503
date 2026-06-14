@@ -27,6 +27,7 @@ public class CapturePointGraphScreen {
         this.level = level;
         this.graph = new CapturePointGraph();
         this.graphView = new CapturePointGraphView();
+        this.graphView.setLevel(level);
         this.graphView.loadGraph(graph);
     }
 
@@ -40,6 +41,15 @@ public class CapturePointGraphScreen {
         var root = new UIElement()
                 .layout(l -> l.width(scw).height(sch))
                 .style(s -> s.background(Sprites.BORDER).backgroundTexture(new ColorRectTexture(PANEL_BG)));
+
+        // 创建通知层（在根容器最上层）
+        var toastContainer = new UIElement()
+                .layout(l -> l.positionType(dev.vfyjxf.taffy.style.TaffyPosition.ABSOLUTE)
+                        .right(0).top(0).width(300).heightPercent(100));
+        root.addChildren(toastContainer);
+
+        var toastLayer = new ToastLayer(toastContainer);
+        graphView.setToastLayer(toastLayer);
 
         // 顶栏
         var topBar = createTopBar();
