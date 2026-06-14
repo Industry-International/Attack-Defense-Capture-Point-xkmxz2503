@@ -182,10 +182,41 @@ public class CapturePointBlockEntity extends BlockEntity {
      */
     public void setBoundPointNameFromServer(String name) {
         this.boundPointName = name != null ? name : "";
-        // 同步渲染数据
         syncFromManager();
         setChanged();
         syncToClient();
+    }
+
+    // ================================================================
+    //  全局同步 — 命令 / GUI / 方块三者数据一致性
+    // ================================================================
+
+    /**
+     * 【服务端调用】同步当前世界中所有已加载的 CapturePointBlockEntity，
+     * 让它们从 CaptureManager 获取最新数据。
+     * <p>
+     * 在以下场景调用以确保数据一致性：
+     * <ul>
+     *   <li>GUI 节点图编辑器保存后（{@code applyGraphSnapshot}）</li>
+     *   <li>命令修改据点/区域数据后</li>
+     *   <li>服务器周期性 tick（安全网）</li>
+     * </ul>
+     */
+    public static void syncAllBoundBlocks(ServerLevel level) {
+        int viewDistance = level.getServer().getPlayerList().getViewDistance();
+        for (int dx = -viewDistance; dx <= viewDistance; dx++) {
+            for (int dz = -viewDistance; dz <= viewDistance; dz++) {
+                if (!level.hasChunk(dx, dz)) continue;
+                var chunk = level.getChunk(dx, dz);
+                if (chunk instanceof net.minecraft.world.level.chunk.LevelChunk lc) {
+                    for (var be : lc.getBlockEntities().values()) {
+                        if (be instanceof CapturePointBlockEntity cbe) {
+                            cbe.syncFromManager();
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // ================================================================

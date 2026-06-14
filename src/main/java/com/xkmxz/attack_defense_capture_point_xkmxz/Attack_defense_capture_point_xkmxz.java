@@ -114,6 +114,29 @@ public class Attack_defense_capture_point_xkmxz {
     public void onServerStarting(ServerStartingEvent event) {
     }
 
+    // ================================================================
+    //  服务端 Tick 事件 — 周期性同步方块数据（安全网）
+    // ================================================================
+
+    @EventBusSubscriber(modid = MODID)
+    public static class ServerTickHandler {
+        private static int tickCounter = 0;
+        private static final int SYNC_INTERVAL = 40; // 每 40 tick (~2秒) 同步一次
+
+        @SubscribeEvent
+        public static void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+            tickCounter++;
+            if (tickCounter % SYNC_INTERVAL != 0) return;
+
+            var server = event.getServer();
+            for (var level : server.getAllLevels()) {
+                if (level instanceof net.minecraft.server.level.ServerLevel sl) {
+                    CapturePointBlockEntity.syncAllBoundBlocks(sl);
+                }
+            }
+        }
+    }
+
     @EventBusSubscriber(modid = MODID, value = Dist.CLIENT)
     public static class ClientModEvents {
         @SubscribeEvent
