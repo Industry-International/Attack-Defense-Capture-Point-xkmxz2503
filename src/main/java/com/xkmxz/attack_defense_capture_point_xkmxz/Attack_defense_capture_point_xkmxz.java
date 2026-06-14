@@ -5,7 +5,9 @@ import com.xkmxz.attack_defense_capture_point_xkmxz.block.entity.CapturePointBlo
 import com.xkmxz.attack_defense_capture_point_xkmxz.command.ModCommands;
 import com.xkmxz.attack_defense_capture_point_xkmxz.gui.CapturePointManagerItem;
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.BlockEntityActionPayload;
+import com.xkmxz.attack_defense_capture_point_xkmxz.network.CaptureDataSyncPayload;
 import com.xkmxz.attack_defense_capture_point_xkmxz.render.CapturePointBlockEntityRenderer;
+import com.xkmxz.attack_defense_capture_point_xkmxz.render.CapturePointWorldRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -27,6 +29,7 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -92,13 +95,18 @@ public class Attack_defense_capture_point_xkmxz {
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 
-    /** 注册网络包处理器 — 客户端→服务端严格分离 */
+    /** 注册网络包处理器 — 客户端→服务端 + 服务端→客户端严格分离 */
     private void registerPayloadHandlers(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(MODID).versioned("1.0");
         registrar.playToServer(
                 BlockEntityActionPayload.TYPE,
                 BlockEntityActionPayload.STREAM_CODEC,
                 BlockEntityActionPayload::handleOnServer
+        );
+        registrar.playToClient(
+                CaptureDataSyncPayload.TYPE,
+                CaptureDataSyncPayload.STREAM_CODEC,
+                CaptureDataSyncPayload::handleOnClient
         );
     }
 
@@ -113,6 +121,15 @@ public class Attack_defense_capture_point_xkmxz {
 
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
+    }
+
+    /** 玩家加入世界时，发送据点数据同步包到客户端 */
+    @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+            var level = serverPlayer.serverLevel();
+            CaptureDataSyncPayload.sendToPlayer(level, serverPlayer);
+        }
     }
 
     // ================================================================
@@ -141,8 +158,10 @@ public class Attack_defense_capture_point_xkmxz {
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            // 注册据点方块的范围轮廓渲染器
+            // 注册据点方块实体渲染器（仅渲染方块模型本身）
             BlockEntityRenderers.register(CAPTURE_POINT_BE.get(), CapturePointBlockEntityRenderer::new);
+            // 注册世界级据点区域渲染器（在据点实际中心坐标画范围圆环）
+            NeoForge.EVENT_BUS.register(CapturePointWorldRenderer.class);
         }
     }
 }

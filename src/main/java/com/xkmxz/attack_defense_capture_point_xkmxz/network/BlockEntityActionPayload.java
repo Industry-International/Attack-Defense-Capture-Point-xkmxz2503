@@ -141,6 +141,9 @@ public record BlockEntityActionPayload(
             if (serverLevel.getBlockEntity(payload.blockPos()) instanceof CapturePointBlockEntity be) {
                 be.syncFromManager();
             }
+
+            // 广播最新据点数据到所有客户端（使世界渲染器更新）
+            CaptureDataSyncPayload.broadcastToAll(serverLevel);
         });
     }
 }

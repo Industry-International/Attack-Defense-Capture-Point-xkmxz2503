@@ -12,6 +12,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.mojang.logging.LogUtils;
 import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
 import com.xkmxz.attack_defense_capture_point_xkmxz.manager.ICaptureDataAccess;
+import com.xkmxz.attack_defense_capture_point_xkmxz.network.CaptureDataSyncPayload;
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.BlockEntityActionPayload;
 import com.xkmxz.attack_defense_capture_point_xkmxz.nodegraph.CapturePointGraphScreen;
 import com.xkmxz.attack_defense_capture_point_xkmxz.nodegraph.ToastNotification;
@@ -205,19 +206,27 @@ public class CapturePointBlockEntity extends BlockEntity {
      */
     public static void syncAllBoundBlocks(ServerLevel level) {
         int viewDistance = level.getServer().getPlayerList().getViewDistance();
-        for (int dx = -viewDistance; dx <= viewDistance; dx++) {
-            for (int dz = -viewDistance; dz <= viewDistance; dz++) {
-                if (!level.hasChunk(dx, dz)) continue;
-                var chunk = level.getChunk(dx, dz);
-                if (chunk instanceof net.minecraft.world.level.chunk.LevelChunk lc) {
-                    for (var be : lc.getBlockEntities().values()) {
-                        if (be instanceof CapturePointBlockEntity cbe) {
-                            cbe.syncFromManager();
+        // 遍历所有在线玩家，在每个玩家周围的视距范围内查找方块实体
+        for (var player : level.players()) {
+            var playerChunk = player.chunkPosition();
+            for (int dx = -viewDistance; dx <= viewDistance; dx++) {
+                for (int dz = -viewDistance; dz <= viewDistance; dz++) {
+                    int cx = playerChunk.x + dx;
+                    int cz = playerChunk.z + dz;
+                    if (!level.hasChunk(cx, cz)) continue;
+                    var chunk = level.getChunk(cx, cz);
+                    if (chunk instanceof net.minecraft.world.level.chunk.LevelChunk lc) {
+                        for (var be : lc.getBlockEntities().values()) {
+                            if (be instanceof CapturePointBlockEntity cbe) {
+                                cbe.syncFromManager();
+                            }
                         }
                     }
                 }
             }
         }
+        // 同步后广播据点数据到所有客户端（确保世界渲染器显示最新数据）
+        CaptureDataSyncPayload.broadcastToAll(level);
     }
 
     // ================================================================
