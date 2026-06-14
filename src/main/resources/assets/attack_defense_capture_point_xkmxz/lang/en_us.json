@@ -121,6 +121,7 @@
   "gui.capture_point_graph.dialog.advanced_config.show_range": "Show Range:",
   "gui.capture_point_graph.dialog.advanced_config.color": "Display Color:",
   "gui.capture_point_graph.dialog.advanced_config.save": "Save",
+  "gui.capture_point_graph.dialog.advanced_config.change_color": "Change Color",
   "gui.capture_point_graph.dialog.advanced_config.toggle.on": "ON",
   "gui.capture_point_graph.dialog.advanced_config.toggle.off": "OFF",
 

@@ -164,9 +164,15 @@ public final class CapturePointGraphDialogs {
 
     // ====== 高级配置对话框 ======
 
+    /** 用于在子对话框间传递编辑状态 */
+    private record AdvancedConfigState(String pointName, Level level,
+                                        String owner, double radius,
+                                        boolean showRange, int displayColor) {}
+
     /**
      * 打开据点高级配置对话框，可编辑据点的所有配置项：
      * owner、radius、displayColor、showRange。
+     * 颜色选择器通过"更改颜色"按钮进入独立的子对话框，避免主界面臃肿。
      */
     public static void openAdvancedConfigDialog(Level level, String pointName) {
         var mgr = getManager(level);
@@ -181,50 +187,60 @@ public final class CapturePointGraphDialogs {
                     Component.translatable("toast.capture_point_block.point_not_found", pointName));
             return;
         }
+        buildAdvancedConfigUI(new AdvancedConfigState(
+                pointName, level,
+                entry.owner() != null ? entry.owner() : "",
+                entry.radius(), entry.showRange(), entry.displayColor()));
+    }
 
+    /**
+     * 构建高级配置主界面（接收状态，便于从颜色选择器返回时恢复输入）。
+     */
+    private static void buildAdvancedConfigUI(AdvancedConfigState state) {
         var mc = Minecraft.getInstance();
+        var win = mc.getWindow();
+        int scw = win.getGuiScaledWidth();
         int bg = 0xFF1A1A2E;
 
-        // 可变状态（用于内部追踪用户修改）
-        String[] currentOwner = { entry.owner() != null ? entry.owner() : "" };
-        double[] currentRadius = { entry.radius() };
-        boolean[] currentShowRange = { entry.showRange() };
-        int[] currentDisplayColor = { entry.displayColor() };
+        // 自适应宽度：屏幕 55%，最大 380px（紧凑尺寸）
+        int panelW = Math.min(scw * 55 / 100, 380);
+        // 紧凑的固定高度
+        int panelH = 195;
 
-        // 计算对话框高度
-        int panelW = 360;
-        int colorSwatchSize = 40;
-        int colorGap = 6;
-        int colorCols = 4;
-        int colorRows = (int) Math.ceil(8.0 / colorCols);
-        int colorGridH = colorRows * (colorSwatchSize + colorGap);
-        int panelH = 30 + 40 + 30 + 30 + 30 + 30 + colorGridH + 40;
+        // 可变状态（颜色通过子对话框修改）
+        boolean[] currentShowRange = { state.showRange() };
+        int[] currentDisplayColor = { state.displayColor() };
 
         var root = new UIElement()
-                .layout(l -> l.width(panelW).height(panelH).paddingAll(12).gapAll(6)
+                .layout(l -> l.width(panelW).height(panelH).paddingAll(10).gapAll(5)
                         .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN))
                 .style(s -> s.background(Sprites.BORDER)
                         .backgroundTexture(new ColorRectTexture(bg)));
 
-        // ---- 标题 ----
+        // ---- 标题行（名称 + 位置同一行） ----
+        var headerRow = new UIElement()
+                .layout(l -> l.widthPercent(100).heightAuto()
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(6));
         var titleLabel = new Label().setText(
-                Component.translatable("gui.capture_point_graph.dialog.advanced_config.title", pointName));
-        titleLabel.layout(l -> l.widthPercent(100).heightAuto());
-        titleLabel.textStyle(s -> s.fontSize(12.0f).textColor(0xFFEEEEEE));
-        root.addChildren(titleLabel);
+                Component.translatable("gui.capture_point_graph.dialog.advanced_config.title", state.pointName()));
+        titleLabel.layout(l -> l.widthAuto().heightAuto());
+        titleLabel.textStyle(s -> s.fontSize(11.0f).textColor(0xFFEEEEEE));
 
-        // ---- 只读信息：名称 + 位置 ----
-        BlockPos pos = entry.pos();
+        var pos = getManager(state.level()).getPoints().get(state.pointName()).pos();
         var infoLabel = new Label().setText(
                 Component.translatable("gui.capture_point_graph.dialog.advanced_config.info",
-                        pointName, pos.getX(), pos.getY(), pos.getZ()));
-        infoLabel.layout(l -> l.widthPercent(100).heightAuto());
-        infoLabel.textStyle(s -> s.fontSize(10.0f).textColor(0xFFAAAAAA));
-        root.addChildren(infoLabel);
+                        pos.getX(), pos.getY(), pos.getZ()));
+        infoLabel.layout(l -> l.flex(1).heightAuto());
+        infoLabel.textStyle(s -> s.fontSize(9.0f).textColor(0xFF999999));
+        headerRow.addChildren(titleLabel, infoLabel);
+        root.addChildren(headerRow);
 
-        root.addChildren(new UIElement().layout(l -> l.height(4))); // 间距
+        // ---- 分割线 ----
+        root.addChildren(new UIElement()
+                .layout(l -> l.widthPercent(100).height(1))
+                .style(s -> s.backgroundTexture(new ColorRectTexture(0xFF2A2A4A))));
 
-        // ---- Owner 输入 ----
+        // ---- Owner 输入（整行） ----
         var ownerLabel = new Label().setText(
                 Component.translatable("gui.capture_point_graph.dialog.advanced_config.owner"));
         ownerLabel.layout(l -> l.widthPercent(100).heightAuto());
@@ -232,96 +248,96 @@ public final class CapturePointGraphDialogs {
         root.addChildren(ownerLabel);
 
         var ownerField = new TextField();
-        ownerField.layout(l -> l.widthPercent(100).height(24));
+        ownerField.layout(l -> l.widthPercent(100).height(22));
         ownerField.textFieldStyle(s -> {
             s.textColor(0xFFFFFFFF);
-            s.fontSize(13.0f);
+            s.fontSize(12.0f);
         });
-        ownerField.setValue(currentOwner[0], false);
+        ownerField.setValue(state.owner(), false);
         root.addChildren(ownerField);
 
-        // ---- Radius 输入 ----
+        // ---- 第二行：Radius + Show Range 并排 ----
+        var row2 = new UIElement()
+                .layout(l -> l.widthPercent(100).heightAuto()
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(8));
+
+        var radiusCol = new UIElement()
+                .layout(l -> l.flex(1).heightAuto()
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN).gapAll(2));
         var radiusLabel = new Label().setText(
                 Component.translatable("gui.capture_point_graph.dialog.advanced_config.radius"));
         radiusLabel.layout(l -> l.widthPercent(100).heightAuto());
         radiusLabel.textStyle(s -> s.fontSize(10.0f).textColor(0xFFCCCCCC));
-        root.addChildren(radiusLabel);
-
         var radiusField = new TextField();
-        radiusField.layout(l -> l.width(120).height(24));
+        radiusField.layout(l -> l.widthPercent(100).height(22));
         radiusField.textFieldStyle(s -> {
             s.textColor(0xFFFFFFFF);
-            s.fontSize(13.0f);
+            s.fontSize(12.0f);
         });
-        radiusField.setValue(String.valueOf((int) currentRadius[0]), false);
-        root.addChildren(radiusField);
+        radiusField.setValue(String.valueOf((int) state.radius()), false);
+        radiusCol.addChildren(radiusLabel, radiusField);
 
-        // ---- Show Range 切换按钮 ----
-        var showRangeLabel = new Label().setText(
+        var rangeCol = new UIElement()
+                .layout(l -> l.flex(1).heightAuto()
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN).gapAll(2));
+        var rangeLabel = new Label().setText(
                 Component.translatable("gui.capture_point_graph.dialog.advanced_config.show_range"));
-        showRangeLabel.layout(l -> l.widthPercent(100).heightAuto());
-        showRangeLabel.textStyle(s -> s.fontSize(10.0f).textColor(0xFFCCCCCC));
-        root.addChildren(showRangeLabel);
-
+        rangeLabel.layout(l -> l.widthPercent(100).heightAuto());
+        rangeLabel.textStyle(s -> s.fontSize(10.0f).textColor(0xFFCCCCCC));
         var toggleBtn = new Button();
-        toggleBtn.layout(l -> l.width(100).height(24));
+        toggleBtn.layout(l -> l.widthPercent(100).height(22));
         toggleBtn.setOnClick(e -> {
             currentShowRange[0] = !currentShowRange[0];
             updateToggleButtonText(toggleBtn, currentShowRange[0]);
         });
         updateToggleButtonText(toggleBtn, currentShowRange[0]);
-        root.addChildren(toggleBtn);
+        rangeCol.addChildren(rangeLabel, toggleBtn);
 
-        // ---- 颜色选择器 ----
+        row2.addChildren(radiusCol, rangeCol);
+        root.addChildren(row2);
+
+        // ---- 第三行：颜色预览 + 更改按钮 ----
+        var row3 = new UIElement()
+                .layout(l -> l.widthPercent(100).heightAuto()
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(6)
+                        .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
         var colorLabel = new Label().setText(
                 Component.translatable("gui.capture_point_graph.dialog.advanced_config.color"));
-        colorLabel.layout(l -> l.widthPercent(100).heightAuto());
+        colorLabel.layout(l -> l.widthAuto().heightAuto());
         colorLabel.textStyle(s -> s.fontSize(10.0f).textColor(0xFFCCCCCC));
-        root.addChildren(colorLabel);
 
-        // 当前选中的颜色预览
         var colorPreview = new UIElement()
-                .layout(l -> l.width(60).height(20))
+                .layout(l -> l.width(22).height(22))
                 .style(s -> s.background(Sprites.BORDER)
                         .backgroundTexture(new ColorRectTexture(currentDisplayColor[0])));
-        root.addChildren(colorPreview);
 
-        // 颜色网格
-        var grid = new UIElement()
-                .layout(l -> l.widthPercent(100).heightAuto()
-                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW)
-                        .flexWrap(dev.vfyjxf.taffy.style.FlexWrap.WRAP).gapAll(colorGap));
-        grid.style(s -> s.backgroundTexture(new ColorRectTexture(0x00000000)));
+        var changeColorBtn = new Button()
+                .setText(Component.translatable("gui.capture_point_graph.dialog.advanced_config.change_color"));
+        changeColorBtn.layout(l -> l.width(110).height(22));
+        changeColorBtn.setOnClick(e -> {
+            var currentState = new AdvancedConfigState(
+                    state.pointName(), state.level(),
+                    ownerField.getText(), Double.parseDouble(radiusField.getText()),
+                    currentShowRange[0], currentDisplayColor[0]);
+            openColorPickerSubDialog(currentState);
+        });
 
-        for (int color : PRESET_COLORS) {
-            var swatch = new UIElement()
-                    .layout(l -> l.width(colorSwatchSize).height(colorSwatchSize))
-                    .style(s -> s.background(Sprites.BORDER)
-                            .backgroundTexture(new ColorRectTexture(color)));
-            int selectedColor = color;
-            swatch.addEventListener(com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents.MOUSE_DOWN, ev -> {
-                currentDisplayColor[0] = selectedColor;
-                // 更新预览色块
-                colorPreview.style(s -> s.backgroundTexture(new ColorRectTexture(selectedColor)));
-            });
-            grid.addChildren(swatch);
-        }
-        root.addChildren(grid);
+        var spacer3 = new UIElement().layout(l -> l.flex(1));
+        row3.addChildren(colorLabel, colorPreview, changeColorBtn, spacer3);
+        root.addChildren(row3);
 
-        // ---- 间距 ----
+        // ---- 弹性间距 ----
         root.addChildren(new UIElement().layout(l -> l.flex(1)));
 
         // ---- 底部按钮行 ----
         var btnRow = new UIElement()
-                .layout(l -> l.widthPercent(100).height(30)
+                .layout(l -> l.widthPercent(100).height(26)
                         .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(8));
 
-        // 保存按钮
         var saveBtn = new Button()
                 .setText(Component.translatable("gui.capture_point_graph.dialog.advanced_config.save"));
         saveBtn.layout(l -> l.flex(1).heightPercent(100));
         saveBtn.setOnClick(e -> {
-            // 收集用户输入
             String newOwner = ownerField.getText().trim();
             double newRadius;
             try {
@@ -336,35 +352,30 @@ public final class CapturePointGraphDialogs {
                         Component.translatable("toast.capture_point_block.radius_invalid"));
                 return;
             }
-
-            // 批量写回 CaptureManager
-            var manager = getManager(level);
+            var manager = getManager(state.level());
             if (manager != null) {
-                manager.setPointOwner(pointName, newOwner.isEmpty() ? null : newOwner);
-                manager.setPointRadius(pointName, newRadius);
-                manager.setPointShowRange(pointName, currentShowRange[0]);
-                manager.setPointDisplayColor(pointName, currentDisplayColor[0]);
+                manager.setPointOwner(state.pointName(), newOwner.isEmpty() ? null : newOwner);
+                manager.setPointRadius(state.pointName(), newRadius);
+                manager.setPointShowRange(state.pointName(), currentShowRange[0]);
+                manager.setPointDisplayColor(state.pointName(), currentDisplayColor[0]);
             }
-
             ToastNotification.push(ToastNotification.Type.SUCCESS,
-                    Component.translatable("toast.capture_point_graph.advanced_config.saved", pointName));
+                    Component.translatable("toast.capture_point_graph.advanced_config.saved", state.pointName()));
             mc.setScreen(null);
-            reopen(level);
+            reopen(state.level());
         });
 
-        // 取消按钮
         var cancelBtn = new Button()
                 .setText(Component.translatable("gui.capture_point_graph.dialog.cancel"));
         cancelBtn.layout(l -> l.flex(1).heightPercent(100));
         cancelBtn.setOnClick(e -> {
             mc.setScreen(null);
-            reopen(level);
+            reopen(state.level());
         });
 
         btnRow.addChildren(saveBtn, cancelBtn);
         root.addChildren(btnRow);
 
-        // 居中容器
         var wrap = new UIElement()
                 .layout(l -> l.widthPercent(100).heightPercent(100).paddingAll(0).gapAll(0)
                         .justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER)
@@ -373,7 +384,89 @@ public final class CapturePointGraphDialogs {
 
         var ui = ModularUI.of(UI.of(wrap));
         mc.setScreen(new ModularUIScreen(ui,
-                Component.translatable("gui.capture_point_graph.dialog.advanced_config.title", pointName)));
+                Component.translatable("gui.capture_point_graph.dialog.advanced_config.title", state.pointName())));
+    }
+
+    /**
+     * 颜色选择子对话框 - 独立的弹出窗口，选择后自动返回主界面。
+     */
+    private static void openColorPickerSubDialog(AdvancedConfigState state) {
+        var mc = Minecraft.getInstance();
+        var win = mc.getWindow();
+        int scw = win.getGuiScaledWidth();
+
+        // 自适应尺寸
+        int panelW = Math.min(scw * 50 / 100, 300);
+        int colorSwatchSize = Math.min((panelW - 24 - 18) / 4, 36);
+        int colorGap = 6;
+        int colorGridH = 2 * (colorSwatchSize + colorGap);
+        int panelH = 30 + colorGridH + 50;
+
+        var root = new UIElement()
+                .layout(l -> l.width(panelW).height(panelH).paddingAll(12).gapAll(8)
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN))
+                .style(s -> s.background(Sprites.BORDER)
+                        .backgroundTexture(new ColorRectTexture(0xFF1A1A2E)));
+
+        var title = new Label().setText(
+                Component.translatable("gui.capture_point_block.dialog.color_picker"));
+        title.layout(l -> l.widthPercent(100).heightAuto());
+        title.textStyle(s -> s.fontSize(11.0f).textColor(0xFFEEEEEE));
+        root.addChildren(title);
+
+        // 当前颜色预览
+        var previewRow = new UIElement()
+                .layout(l -> l.widthPercent(100).heightAuto()
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(6));
+        var currentPreview = new UIElement()
+                .layout(l -> l.width(24).height(16))
+                .style(s -> s.background(Sprites.BORDER)
+                        .backgroundTexture(new ColorRectTexture(state.displayColor())));
+        var hintLabel = new Label().setText(
+                Component.translatable("gui.capture_point_block.dialog.color_picker.hint"));
+        hintLabel.layout(l -> l.flex(1).heightAuto());
+        hintLabel.textStyle(s -> s.fontSize(9.0f).textColor(0xFF888888));
+        previewRow.addChildren(currentPreview, hintLabel);
+        root.addChildren(previewRow);
+
+        // 颜色网格
+        var grid = new UIElement()
+                .layout(l -> l.widthPercent(100).heightAuto()
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW)
+                        .flexWrap(dev.vfyjxf.taffy.style.FlexWrap.WRAP).gapAll(colorGap));
+        for (int color : PRESET_COLORS) {
+            var swatch = new UIElement()
+                    .layout(l -> l.width(colorSwatchSize).height(colorSwatchSize))
+                    .style(s -> s.background(Sprites.BORDER)
+                            .backgroundTexture(new ColorRectTexture(color)));
+            int selectedColor = color;
+            swatch.addEventListener(com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents.MOUSE_DOWN, ev -> {
+                var newState = new AdvancedConfigState(
+                        state.pointName(), state.level(),
+                        state.owner(), state.radius(),
+                        state.showRange(), selectedColor);
+                buildAdvancedConfigUI(newState);
+            });
+            grid.addChildren(swatch);
+        }
+        root.addChildren(grid);
+
+        var cancelBtn = new Button()
+                .setText(Component.translatable("gui.capture_point_graph.dialog.cancel"));
+        cancelBtn.layout(l -> l.widthPercent(100).height(24));
+        cancelBtn.setOnClick(e -> buildAdvancedConfigUI(state));
+
+        root.addChildren(cancelBtn);
+
+        var wrap = new UIElement()
+                .layout(l -> l.widthPercent(100).heightPercent(100).paddingAll(0).gapAll(0)
+                        .justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER)
+                        .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
+        wrap.addChildren(root);
+
+        var ui = ModularUI.of(UI.of(wrap));
+        mc.setScreen(new ModularUIScreen(ui,
+                Component.translatable("gui.capture_point_block.dialog.color_picker")));
     }
 
     /**
@@ -396,6 +489,8 @@ public final class CapturePointGraphDialogs {
             0xFFFFFFFF, // 白
             0xFF000000  // 黑
     };
+
+
 
     // ====== 内部工具 ======
 
