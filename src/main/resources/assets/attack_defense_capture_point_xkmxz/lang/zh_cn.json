@@ -115,7 +115,7 @@
   "gui.capture_point_graph.dialog.delete_zone.message": "确定要删除区域 '%s' 吗？",
 
   "gui.capture_point_graph.dialog.advanced_config.title": "高级配置 - %s",
-  "gui.capture_point_graph.dialog.advanced_config.info": "据点: %s | 位置: [%d, %d, %d]",
+  "gui.capture_point_graph.dialog.advanced_config.info": "位置: [%d, %d, %d]",
   "gui.capture_point_graph.dialog.advanced_config.owner": "所属:",
   "gui.capture_point_graph.dialog.advanced_config.radius": "半径 (1-100):",
   "gui.capture_point_graph.dialog.advanced_config.show_range": "显示范围:",

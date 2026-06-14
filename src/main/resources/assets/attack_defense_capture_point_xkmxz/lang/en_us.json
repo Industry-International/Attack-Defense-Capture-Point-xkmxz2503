@@ -115,7 +115,7 @@
   "gui.capture_point_graph.dialog.delete_zone.message": "Delete zone '%s'?",
 
   "gui.capture_point_graph.dialog.advanced_config.title": "Advanced Configuration - %s",
-  "gui.capture_point_graph.dialog.advanced_config.info": "Point: %s | Position: [%d, %d, %d]",
+  "gui.capture_point_graph.dialog.advanced_config.info": "Position: [%d, %d, %d]",
   "gui.capture_point_graph.dialog.advanced_config.owner": "Owner:",
   "gui.capture_point_graph.dialog.advanced_config.radius": "Radius (1-100):",
   "gui.capture_point_graph.dialog.advanced_config.show_range": "Show Range:",
