@@ -15,11 +15,13 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.PortModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.wire.WireModel;
 import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import org.slf4j.Logger;
 
 import java.util.*;
 
@@ -29,6 +31,7 @@ import java.util.*;
  */
 public class CapturePointGraphScreen {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int PANEL_BG = 0xFF1A1A2E;
     private static final int EDIT_MODE_BG = 0xFF2E1A1A;
 
@@ -206,8 +209,12 @@ public class CapturePointGraphScreen {
 
     /**
      * 从节点图中构建完整数据快照。
-     * 读取所有节点模型中的选项值，构造新的 points/zones 映射。
-     * 编辑模式下此方法作为保存的唯一入口。
+     * 读取所有节点模型中的选项值，同时解析连线（wire）关系，
+     * 构造新的 points/zones 映射。
+     * <p>
+     * <b>关键修复</b>：区域包含的据点列表优先从连线（wire）中解析，
+     * 而非仅依赖节点选项 edit_points（该选项仅由 {@link #syncZoneOptions} 
+     * 从 CaptureManager 同步时填充，新建连线后可能尚未更新）。
      */
     private Map.Entry<Map<String, CaptureManager.CapturePointEntry>, Map<String, CaptureManager.ZoneEntry>> buildSnapshotFromGraph() {
         var newPoints = new LinkedHashMap<String, CaptureManager.CapturePointEntry>();
@@ -225,6 +232,39 @@ public class CapturePointGraphScreen {
                     pointModels.put(name, nm);
                 } else if (hasOutputPort(nm, "zone_out") || hasInputPort(nm, "point_in")) {
                     zoneModels.put(name, nm);
+                }
+            }
+        }
+
+        // ---- 解析连线，确定据点→区域的归属关系和区域→区域的依赖关系 ----
+        // wireBasedZonePoints: zoneName → [pointName, ...] 从连线中解析
+        var wireBasedZonePoints = new LinkedHashMap<String, List<String>>();
+        // wireBasedRequiredZone: zoneName → requiredZoneName 从区域依赖连线中解析
+        var wireBasedRequiredZone = new LinkedHashMap<String, String>();
+
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+
+                // 获取两个端口所属的 NodeModel
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+
+                // 判断连线类型：
+                // 1. 据点→区域连接: from=point_signal(O)  to=point_in(I)
+                if (hasOutputPort(fromNm, "point_signal") && hasInputPort(toNm, "point_in")) {
+                    wireBasedZonePoints.computeIfAbsent(toName, k -> new ArrayList<>()).add(fromName);
+                }
+                // 2. 区域→区域依赖: from=zone_out(O)  to=required_zone(I)
+                else if (hasOutputPort(fromNm, "zone_out") && hasInputPort(toNm, "required_zone")) {
+                    wireBasedRequiredZone.put(toName, fromName);
                 }
             }
         }
@@ -259,19 +299,30 @@ public class CapturePointGraphScreen {
                     radius, color, showRange));
         }
 
-        // 构建区域数据
+        // 构建区域数据（据点列表优先从连线解析，回退到 edit_points 选项）
         for (var entry : zoneModels.entrySet()) {
             String name = entry.getKey();
             var nm = entry.getValue();
-            String reqZone = getOptionString(nm, "required_zone");
-            String pointsStr = getOptionString(nm, "edit_points");
-            List<String> cpList = new ArrayList<>();
-            if (!pointsStr.isEmpty()) {
-                for (var pn : pointsStr.split(",")) {
-                    pn = pn.trim();
-                    if (!pn.isEmpty()) cpList.add(pn);
+
+            // 依赖区域：优先从连线解析，回退到选项值
+            String reqZone = wireBasedRequiredZone.get(name);
+            if (reqZone == null || reqZone.isEmpty()) {
+                reqZone = getOptionString(nm, "required_zone");
+            }
+
+            // 据点列表：优先从连线解析，回退到 edit_points 选项
+            List<String> cpList = wireBasedZonePoints.get(name);
+            if (cpList == null) {
+                cpList = new ArrayList<>();
+                String pointsStr = getOptionString(nm, "edit_points");
+                if (!pointsStr.isEmpty()) {
+                    for (var pn : pointsStr.split(",")) {
+                        pn = pn.trim();
+                        if (!pn.isEmpty()) cpList.add(pn);
+                    }
                 }
             }
+
             newZones.put(name, new CaptureManager.ZoneEntry(
                     name, cpList, reqZone.isEmpty() ? null : reqZone));
         }
@@ -317,6 +368,7 @@ public class CapturePointGraphScreen {
                     Component.translatable("toast.capture_point_graph.saved"));
 
         } catch (Exception e) {
+            LOGGER.error("Save graph failed: {}", e.getMessage(), e);
             ToastNotification.push(ToastNotification.Type.ERROR,
                     Component.literal("Save failed: " + e.getMessage()));
         }
@@ -458,7 +510,10 @@ public class CapturePointGraphScreen {
                     if (signalPort == null) continue;
                     try {
                         graph.graphModel.createWire(signalPort, pointInPort);
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to create wire from point '{}' to zone '{}': {}",
+                                pointName, zoneEntry.name(), e.getMessage());
+                    }
                 }
             }
 
@@ -475,10 +530,15 @@ public class CapturePointGraphScreen {
                 if (zoneOutPort == null) continue;
                 try {
                     graph.graphModel.createWire(zoneOutPort, reqZoneInput);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to create dependency wire from zone '{}' to zone '{}': {}",
+                            zoneEntry.requiredZone(), zoneEntry.name(), e.getMessage());
+                }
             }
 
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            LOGGER.warn("Failed to load data to graph: {}", e.getMessage());
+        }
     }
 
     // ================================================================
