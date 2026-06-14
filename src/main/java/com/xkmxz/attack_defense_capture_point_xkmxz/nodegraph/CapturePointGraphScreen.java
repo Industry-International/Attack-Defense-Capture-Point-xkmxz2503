@@ -30,19 +30,27 @@ import java.util.*;
 public class CapturePointGraphScreen {
 
     private static final int PANEL_BG = 0xFF1A1A2E;
+    private static final int EDIT_MODE_BG = 0xFF2E1A1A;
 
     private final Level level;
     private final CapturePointGraphView graphView;
     private final CapturePointGraph graph;
+    private boolean editMode = false;
 
     public CapturePointGraphScreen(Level level) {
         this.level = level;
         this.graph = new CapturePointGraph();
         this.graphView = new CapturePointGraphView();
         this.graphView.setLevel(level);
+        this.graphView.setScreen(this);
         this.graphView.loadGraph(graph);
         // 注册实时数据刷新回调（每 ~15 tick 由 graphView.screenTick() 驱动）
         this.graphView.setRefreshCallback(this::refreshNodeTitles);
+    }
+
+    /** 返回当前是否处于编辑模式，GraphView 可用此判断菜单行为 */
+    public boolean isEditMode() {
+        return editMode;
     }
 
     public void open() {
@@ -98,6 +106,19 @@ public class CapturePointGraphScreen {
         title.setText(Component.translatable("gui.attack_defense_capture_point_xkmxz.graph.title"));
         title.layout(l -> l.widthAuto().heightPercent(100));
 
+        // 编辑模式切换按钮（在保存按钮左侧）
+        var editToggleBtn = new Button();
+        updateEditToggleButton(editToggleBtn);
+        editToggleBtn.layout(l -> l.width(60).heightPercent(100));
+        editToggleBtn.setOnClick(e -> {
+            editMode = !editMode;
+            updateEditToggleButton(editToggleBtn);
+            graphView.showPanelsForEditMode(editMode);
+            tb.style(s -> s.backgroundTexture(new ColorRectTexture(editMode ? EDIT_MODE_BG : 0xFF16213E)));
+            ToastNotification.push(editMode ? ToastNotification.Type.INFO : ToastNotification.Type.SUCCESS,
+                    Component.translatable(editMode ? "toast.capture_point_graph.edit_mode.on" : "toast.capture_point_graph.edit_mode.off"));
+        });
+
         // 保存按钮
         var saveBtn = new Button();
         saveBtn.setText(Component.translatable("gui.attack_defense_capture_point_xkmxz.graph.btn_save"));
@@ -122,8 +143,19 @@ public class CapturePointGraphScreen {
         // 占位弹性空间
         var spacer = new UIElement().layout(l -> l.flex(1));
 
-        tb.addChildren(title, spacer, saveBtn, refreshBtn, closeBtn);
+        tb.addChildren(title, spacer, editToggleBtn, saveBtn, refreshBtn, closeBtn);
         return tb;
+    }
+
+    /** 更新编辑模式切换按钮的文本和颜色 */
+    private void updateEditToggleButton(Button btn) {
+        if (editMode) {
+            btn.setText(Component.translatable("gui.attack_defense_capture_point_xkmxz.graph.edit_mode.on"));
+            btn.style(s -> s.backgroundTexture(new ColorRectTexture(0xFFAA3333)));
+        } else {
+            btn.setText(Component.translatable("gui.attack_defense_capture_point_xkmxz.graph.edit_mode.off"));
+            btn.style(s -> s.backgroundTexture(new ColorRectTexture(0xFF333333)));
+        }
     }
 
     // ================================================================
@@ -390,8 +422,9 @@ public class CapturePointGraphScreen {
     private boolean isSyncingFromGame = false;
 
     /**
-     * 从 CaptureManager 读取最新数据，更新所有节点标题和选项以反映真实状态。
-     * 使用 IFieldValueConfigurable.setValue() 正确推送值到 Constant，从而自动更新 UI。
+     * 从 CaptureManager 读取最新数据，更新节点标题。
+     * 非编辑模式：同步所有选项值（只读展示）
+     * 编辑模式：只更新节点标题，不覆盖选项值（用户正在编辑）
      */
     public void refreshNodeTitles() {
         try {
@@ -415,8 +448,10 @@ public class CapturePointGraphScreen {
                                 String zoneName = mgr.findZoneForPoint(name);
                                 String zoneDisplay = zoneName != null ? zoneName : "—";
                                 nm.setTitle(Component.literal(name + " [" + zoneDisplay + "]"));
-                                // 同步选项数据（所属显示区域名，非玩家名）
-                                syncPointOptions(nm, entry, mgr.isZoneCaptured(name), zoneName);
+                                // 编辑模式下不覆盖选项值（用户正在编辑）
+                                if (!editMode) {
+                                    syncPointOptions(nm, entry, mgr.isZoneCaptured(name), zoneName);
+                                }
                             } else {
                                 nm.setTitle(Component.literal(name));
                             }
@@ -430,8 +465,10 @@ public class CapturePointGraphScreen {
                                 String status = captured ? "✓" : "✗";
                                 String access = accessible ? "" : " 🔒";
                                 nm.setTitle(Component.literal(name + " [" + status + " " + ptCount + "pts" + access + "]"));
-                                // 同步选项数据
-                                syncZoneOptions(nm, entry, captured);
+                                // 编辑模式下不覆盖选项值
+                                if (!editMode) {
+                                    syncZoneOptions(nm, entry, captured);
+                                }
                             } else {
                                 nm.setTitle(Component.literal(name));
                             }
@@ -464,23 +501,31 @@ public class CapturePointGraphScreen {
     }
 
     /**
-     * 同步据点节点选项（captured / owner(区域名) / position）
+     * 同步据点节点选项（captured / owner(区域名) / position / radius / display_color / show_range）
      * "所属"字段显示该据点连接的区域名称（由 mgr.findZoneForPoint 获取），
      * 区域由连线管理，此处仅做只读展示。
+     * 编辑模式字段（radius / display_color / show_range）始终从 CaptureManager 同步。
      */
     private static void syncPointOptions(NodeModel nm, CaptureManager.CapturePointEntry entry, boolean isCaptured, @org.jetbrains.annotations.Nullable String zoneName) {
         setOptionValue(nm, "captured", isCaptured);
         setOptionValue(nm, "owner", zoneName != null ? zoneName : "");
         setOptionValue(nm, "position", entry.pos().getX() + ", " + entry.pos().getY() + ", " + entry.pos().getZ());
+        // 编辑模式额外字段
+        setOptionValue(nm, "radius", entry.radius());
+        setOptionValue(nm, "display_color", entry.displayColor());
+        setOptionValue(nm, "show_range", entry.showRange());
     }
 
     /**
-     * 同步区域节点选项（captured / required_zone / points）
+     * 同步区域节点选项（captured / required_zone / points / description / edit_points）
      */
     private static void syncZoneOptions(NodeModel nm, CaptureManager.ZoneEntry entry, boolean captured) {
         setOptionValue(nm, "captured", captured);
         setOptionValue(nm, "required_zone", entry.requiredZone() != null ? entry.requiredZone() : "");
         setOptionValue(nm, "points", String.join(", ", entry.capturePoints()));
+        // 编辑模式额外字段
+        setOptionValue(nm, "description", "");
+        setOptionValue(nm, "edit_points", String.join(", ", entry.capturePoints()));
     }
 
     // ================================================================
@@ -522,19 +567,63 @@ public class CapturePointGraphScreen {
 
     /**
      * 当节点选项值被用户编辑时调用，将变更写回 CaptureManager。
+     * 仅在编辑模式下执行实际回写，非编辑模式忽略。
      */
     private void onOptionValueChanged(CaptureManager mgr, String nodeName, boolean isPointNode,
                                        String optionId, Object newValue) {
+        // 仅在编辑模式下执行回写
+        if (!editMode) return;
         try {
             if (isPointNode) {
-                // 据点节点：owner 可编辑，其他字段只读
-                if ("owner".equals(optionId)) {
-                    String ownerStr = newValue instanceof String s ? s.trim() : "";
-                    mgr.setPointOwner(nodeName, ownerStr.isEmpty() ? null : ownerStr);
+                switch (optionId) {
+                    case "owner" -> {
+                        String ownerStr = newValue instanceof String s ? s.trim() : "";
+                        mgr.setPointOwner(nodeName, ownerStr.isEmpty() ? null : ownerStr);
+                    }
+                    case "radius" -> {
+                        double radius = newValue instanceof Number n ? n.doubleValue() : 5.0;
+                        if (radius >= 1 && radius <= 100) {
+                            mgr.setPointRadius(nodeName, radius);
+                        }
+                    }
+                    case "display_color" -> {
+                        int color = newValue instanceof Number n ? n.intValue() : 0xFFFF4444;
+                        mgr.setPointDisplayColor(nodeName, color);
+                    }
+                    case "show_range" -> {
+                        boolean show = newValue instanceof Boolean b ? b : false;
+                        mgr.setPointShowRange(nodeName, show);
+                    }
                 }
             } else {
-                // 区域节点：required_zone 可编辑（通过连线管理），其他字段只读
-                // required_zone 通过连线机制管理，不在文本框中直接编辑
+                // 区域节点
+                switch (optionId) {
+                    case "required_zone" -> {
+                        String zoneStr = newValue instanceof String s ? s.trim() : "";
+                        mgr.setZoneRequiredZone(nodeName, zoneStr.isEmpty() ? null : zoneStr);
+                    }
+                    case "edit_points" -> {
+                        // 编辑据点列表：先清空现有，再添加
+                        // 首先获取当前区域
+                        var zone = mgr.getZones().get(nodeName);
+                        if (zone != null) {
+                            // 移除所有现有据点
+                            for (var cpName : new java.util.ArrayList<>(zone.capturePoints())) {
+                                mgr.removePointFromZone(nodeName, cpName);
+                            }
+                            // 解析逗号分隔的据点名称并添加
+                            String pointsStr = newValue instanceof String s ? s.trim() : "";
+                            if (!pointsStr.isEmpty()) {
+                                for (var name : pointsStr.split(",")) {
+                                    name = name.trim();
+                                    if (!name.isEmpty() && mgr.getPoints().containsKey(name)) {
+                                        mgr.addPointToZone(nodeName, name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         } catch (Exception ignored) {}
     }

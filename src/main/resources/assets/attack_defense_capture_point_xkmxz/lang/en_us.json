@@ -96,6 +96,7 @@
   "gui.capture_point_graph.menu.create_zone": "Create Zone",
   "gui.capture_point_graph.menu.delete": "Delete",
   "gui.capture_point_graph.menu.advanced_config": "Advanced Config",
+  "gui.capture_point_graph.menu.edit_properties": "Edit Properties",
   "gui.capture_point_graph.menu.list_status": "Show Status",
   "gui.capture_point_graph.menu.refresh": "Refresh",
   "gui.capture_point_graph.menu.close": "Close",
@@ -178,5 +179,21 @@
   "command.capturepoint.removefromallzones.not_in_zone": "'%s' is not in any zone",
 
   "toast.capture_point_graph.saved": "Graph saved successfully",
-  "toast.capture_point_graph.advanced_config.saved": "Configuration saved for '%s'"
+  "toast.capture_point_graph.advanced_config.saved": "Configuration saved for '%s'",
+  "toast.capture_point_graph.edit_mode.on": "Edit Mode: ON - Node properties can be edited",
+  "toast.capture_point_graph.edit_mode.off": "Edit Mode: OFF",
+
+  "gui.attack_defense_capture_point_xkmxz.graph.edit_mode.on": "[EDIT]",
+  "gui.attack_defense_capture_point_xkmxz.graph.edit_mode.off": "Edit",
+
+  "gui.capture_point_graph.dialog.edit_properties.point": "Edit Capture Point - %s",
+  "gui.capture_point_graph.dialog.edit_properties.zone": "Edit Capture Zone - %s",
+  "gui.capture_point_graph.dialog.edit_properties.name": "Name:",
+
+  "node.capture_point.option.radius": "Radius",
+  "node.capture_point.option.display_color": "Display Color",
+  "node.capture_point.option.show_range": "Show Range",
+
+  "node.capture_zone.option.description": "Description",
+  "node.capture_zone.option.edit_points": "Member Points (comma separated)"
 }

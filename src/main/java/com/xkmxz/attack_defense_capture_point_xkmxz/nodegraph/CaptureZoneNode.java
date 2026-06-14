@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
  * 具有一个输入端口（point_in）接收来自 CapturePointNode 的连接（表示"区域包含据点"），
  * 一个输出端口（zone_out）连接到其他区域的依赖输入（表示"区域先后关系"），
  * 以及一个输入端口（required_zone）接收来自其他区域的依赖连接。
+ * 编辑模式：description、can_edit_points 可编辑
  */
 public class CaptureZoneNode extends Node {
 
@@ -31,12 +32,12 @@ public class CaptureZoneNode extends Node {
     @Override
     public void onDefineOptions(IOptionDefinitionContext context) {
         super.onDefineOptions(context);
-        // captured 状态选项（只读）
+        // captured 状态选项
         context.addOption("captured", Boolean.class)
                 .withDefaultValue(false)
                 .withDisplayName(Component.translatable("node.capture_zone.option.captured"))
                 .build();
-        // requiredZone 依赖区域名称
+        // requiredZone 依赖区域名称（编辑模式下可编辑）
         context.addOption("required_zone", String.class)
                 .withDefaultValue("")
                 .withDisplayName(Component.translatable("node.capture_zone.option.required_zone"))
@@ -45,6 +46,17 @@ public class CaptureZoneNode extends Node {
         context.addOption("points", String.class)
                 .withDefaultValue("")
                 .withDisplayName(Component.translatable("node.capture_zone.option.points"))
+                .build();
+        // ---- 编辑模式可用选项 ----
+        // description 区域描述（编辑模式下可编辑）
+        context.addOption("description", String.class)
+                .withDefaultValue("")
+                .withDisplayName(Component.translatable("node.capture_zone.option.description"))
+                .build();
+        // can_edit_points 可编辑的据点列表（编辑模式下手动指定据点名称，逗号分隔）
+        context.addOption("edit_points", String.class)
+                .withDefaultValue("")
+                .withDisplayName(Component.translatable("node.capture_zone.option.edit_points"))
                 .build();
     }
 

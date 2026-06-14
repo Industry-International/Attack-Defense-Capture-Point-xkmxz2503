@@ -23,6 +23,7 @@ public class CapturePointGraphView extends GraphView {
     private ToastLayer toastLayer;
     private Runnable refreshCallback;
     private int refreshCounter;
+    private CapturePointGraphScreen screen;
 
     public CapturePointGraphView() {
         super();
@@ -42,6 +43,10 @@ public class CapturePointGraphView extends GraphView {
     /**
      * 设置节点数据刷新回调，每 tick 都会调用（内部按间隔节流）。
      */
+    public void setScreen(CapturePointGraphScreen screen) {
+        this.screen = screen;
+    }
+
     public void setRefreshCallback(Runnable callback) {
         this.refreshCallback = callback;
     }
@@ -56,6 +61,20 @@ public class CapturePointGraphView extends GraphView {
         getPanelLayer().clearAllChildren();
         getPanelLayer().setVisible(false);
         getPanelLayer().setDisplay(false);
+    }
+
+    /** 编辑模式下显示面板层，让选项检查器出现并可编辑 */
+    public void showPanelsForEditMode(boolean show) {
+        var panelLayer = getPanelLayer();
+        if (show) {
+            panelLayer.setVisible(true);
+            panelLayer.setDisplay(true);
+        } else {
+            // 非编辑模式：隐藏面板，回到初始状态
+            panelLayer.clearAllChildren();
+            panelLayer.setVisible(false);
+            panelLayer.setDisplay(false);
+        }
     }
 
     private void suppressDefaultItemLibrary() {
@@ -123,6 +142,7 @@ public class CapturePointGraphView extends GraphView {
     @Override
     protected TreeBuilder.Menu createMenu(float screenX, float screenY) {
         var menu = TreeBuilder.Menu.start();
+        boolean isEditing = screen != null && screen.isEditMode();
 
         // 创建据点
         menu.leaf(
@@ -142,9 +162,25 @@ public class CapturePointGraphView extends GraphView {
                     }
                 });
 
-        // 如果有选中的节点，添加删除选项
+        // 如果有选中的节点，添加操作选项
         var selectedModels = getSelectedModels();
         if (!selectedModels.isEmpty()) {
+            // 编辑模式下：添加"编辑属性"选项（优先显示）
+            if (isEditing) {
+                for (var model : selectedModels) {
+                    String nodeName = model.getName();
+                    menu.leaf(
+                            Component.translatable("gui.capture_point_graph.menu.edit_properties").getString(),
+                            () -> {
+                                if (level != null) {
+                                    CapturePointGraphDialogs.openEditPropertiesDialog(level, nodeName, isPointModel(model));
+                                }
+                            });
+                    break;
+                }
+            }
+
+            // 删除选项（编辑模式和非编辑模式都有）
             menu.leaf(
                     Component.translatable("gui.capture_point_graph.menu.delete").getString(),
                     () -> {
@@ -160,19 +196,21 @@ public class CapturePointGraphView extends GraphView {
                         }
                     });
 
-            // 对选中节点添加"高级配置"项（仅据点节点）
-            for (var model : selectedModels) {
-                if (isPointModel(model)) {
-                    String pointName = model.getName();
-                    menu.leaf(
-                            Component.translatable("gui.capture_point_graph.menu.advanced_config").getString(),
-                            () -> {
-                                if (level != null) {
-                                    CapturePointGraphDialogs.openAdvancedConfigDialog(level, pointName);
-                                }
-                            });
+            // 非编辑模式下：高级配置（仅据点节点）
+            if (!isEditing) {
+                for (var model : selectedModels) {
+                    if (isPointModel(model)) {
+                        String pointName = model.getName();
+                        menu.leaf(
+                                Component.translatable("gui.capture_point_graph.menu.advanced_config").getString(),
+                                () -> {
+                                    if (level != null) {
+                                        CapturePointGraphDialogs.openAdvancedConfigDialog(level, pointName);
+                                    }
+                                });
+                    }
+                    break;
                 }
-                break;
             }
         }
 

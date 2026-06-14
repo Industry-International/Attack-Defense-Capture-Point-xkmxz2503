@@ -539,6 +539,415 @@ public final class CapturePointGraphDialogs {
 
 
 
+    // ====== 编辑模式：编辑属性对话框 ======
+
+    /**
+     * 在编辑模式下打开节点属性编辑对话框。
+     * 据点节点可编辑：name、owner、radius、displayColor、showRange
+     * 区域节点可编辑：name、requiredZone、edit_points、description
+     * 所有变更直接通过 CaptureManager Java API 回写。
+     */
+    public static void openEditPropertiesDialog(Level level, String nodeName, boolean isPoint) {
+        var mc = Minecraft.getInstance();
+        var mgr = getManager(level);
+        if (mgr == null) {
+            ToastNotification.push(ToastNotification.Type.ERROR,
+                    Component.literal("Cannot access server data"));
+            return;
+        }
+
+        int panelW = 340;
+
+        if (isPoint) {
+            // === 据点节点编辑 ===
+            var entry = mgr.getPoints().get(nodeName);
+            if (entry == null) {
+                ToastNotification.push(ToastNotification.Type.ERROR,
+                        Component.translatable("toast.capture_point_block.point_not_found", nodeName));
+                return;
+            }
+
+            int pad = 10;
+            int hTitle = 16;
+            int hSep = 1;
+            int hLabel = 12;
+            int hField = 24;
+            int hBtn = 28;
+            int gapBig = 6;
+            int gapSmall = 3;
+
+            // 行数：title + sep + (name/owner/radius) 3行 + colorRow + (showRange/position) 2行 + btnRow
+            int panelH = pad + hTitle + gapSmall + hSep + gapBig
+                    + 5 * (hLabel + gapSmall + hField + gapBig)
+                    + hBtn + pad;
+
+            boolean[] currentShowRange = { entry.showRange() };
+            int[] currentColor = { entry.displayColor() };
+
+            var root = new UIElement()
+                    .layout(l -> l.width(panelW).height(panelH).paddingAll(pad)
+                            .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN))
+                    .style(s -> s.background(Sprites.BORDER)
+                            .backgroundTexture(new ColorRectTexture(0xFF1A1A2E)));
+
+            // 标题
+            var title = new Label().setText(
+                    Component.translatable("gui.capture_point_graph.dialog.edit_properties.point", nodeName));
+            title.layout(l -> l.widthPercent(100).height(hTitle));
+            title.textStyle(s -> s.fontSize(11.0f).textColor(0xFFEEEEEE));
+            root.addChildren(title);
+
+            // 分割线
+            root.addChildren(new UIElement().layout(l -> l.widthPercent(100).height(hSep))
+                    .style(s -> s.backgroundTexture(new ColorRectTexture(0xFF2A2A4A))));
+
+            // --- Name ---
+            root.addChildren(fieldLabel("gui.capture_point_graph.dialog.edit_properties.name", hLabel));
+            var nameField = new TextField();
+            nameField.layout(l -> l.widthPercent(100).height(hField));
+            nameField.textFieldStyle(s -> { s.textColor(0xFFFFFFFF); s.fontSize(12.0f); });
+            nameField.setValue(nodeName, false);
+            root.addChildren(nameField);
+
+            // --- Owner ---
+            root.addChildren(fieldLabel("node.capture_point.option.owner", hLabel));
+            var ownerField = new TextField();
+            ownerField.layout(l -> l.widthPercent(100).height(hField));
+            ownerField.textFieldStyle(s -> { s.textColor(0xFFFFFFFF); s.fontSize(12.0f); });
+            ownerField.setValue(entry.owner() != null ? entry.owner() : "", false);
+            root.addChildren(ownerField);
+
+            // --- Radius ---
+            root.addChildren(fieldLabel("gui.capture_point_graph.dialog.advanced_config.radius", hLabel));
+            var radiusField = new TextField();
+            radiusField.layout(l -> l.widthPercent(100).height(hField));
+            radiusField.textFieldStyle(s -> { s.textColor(0xFFFFFFFF); s.fontSize(12.0f); });
+            radiusField.setValue(String.valueOf((int) entry.radius()), false);
+            root.addChildren(radiusField);
+
+            // --- Color Row ---
+            var colorLabel = new Label().setText(
+                    Component.translatable("gui.capture_point_graph.dialog.advanced_config.color"));
+            colorLabel.layout(l -> l.widthPercent(100).height(hLabel));
+            colorLabel.textStyle(s -> s.fontSize(10.0f).textColor(0xFFCCCCCC));
+            root.addChildren(colorLabel);
+
+            var colorRow = new UIElement()
+                    .layout(l -> l.widthPercent(100).height(hField)
+                            .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(6)
+                            .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
+            var colorPreview = new UIElement()
+                    .layout(l -> l.width(hField).height(hField))
+                    .style(s -> s.background(Sprites.BORDER)
+                            .backgroundTexture(new ColorRectTexture(currentColor[0])));
+            var changeColorBtn = new Button()
+                    .setText(Component.translatable("gui.capture_point_graph.dialog.advanced_config.change_color"));
+            changeColorBtn.layout(l -> l.width(120).height(hField));
+            changeColorBtn.setOnClick(e -> {
+                var newColor = openColorPickerInline(mc, currentColor[0]);
+                currentColor[0] = newColor;
+                colorPreview.style(s -> s.backgroundTexture(new ColorRectTexture(newColor)));
+            });
+            colorRow.addChildren(colorPreview, changeColorBtn);
+            root.addChildren(colorRow);
+
+            // --- Show Range Toggle ---
+            root.addChildren(fieldLabel("gui.capture_point_graph.dialog.advanced_config.show_range", hLabel));
+            var toggleBtn = new Button();
+            toggleBtn.layout(l -> l.widthPercent(100).height(hField));
+            toggleBtn.setOnClick(e -> {
+                currentShowRange[0] = !currentShowRange[0];
+                updateToggleText(toggleBtn, currentShowRange[0]);
+            });
+            updateToggleText(toggleBtn, currentShowRange[0]);
+            root.addChildren(toggleBtn);
+
+            // --- Bottom Buttons ---
+            var btnRow = new UIElement()
+                    .layout(l -> l.widthPercent(100).height(hBtn)
+                            .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(6));
+            var saveBtn = new Button()
+                    .setText(Component.translatable("gui.capture_point_graph.dialog.advanced_config.save"));
+            saveBtn.layout(l -> l.flex(1).heightPercent(100));
+            saveBtn.setOnClick(e -> {
+                String newName = nameField.getText().trim();
+                String newOwner = ownerField.getText().trim();
+                double newRadius;
+                try {
+                    newRadius = Double.parseDouble(radiusField.getText().trim());
+                    if (newRadius < 1 || newRadius > 100) {
+                        ToastNotification.push(ToastNotification.Type.ERROR,
+                                Component.translatable("toast.capture_point_block.radius_invalid"));
+                        return;
+                    }
+                } catch (NumberFormatException ex) {
+                    ToastNotification.push(ToastNotification.Type.ERROR,
+                            Component.translatable("toast.capture_point_block.radius_invalid"));
+                    return;
+                }
+
+                // 回写 CaptureManager
+                var manager = getManager(level);
+                if (manager != null) {
+                    // 如果名称变了，需要创建新据点并删除旧的
+                    if (!newName.equals(nodeName) && !newName.isEmpty()) {
+                        // 先创建新名称的据点（复制坐标）
+                        if (!manager.getPoints().containsKey(newName)) {
+                            manager.addOrUpdatePoint(newName, entry.pos());
+                        }
+                        // 复制其他属性
+                        manager.setPointOwner(newName, newOwner.isEmpty() ? null : newOwner);
+                        manager.setPointRadius(newName, newRadius);
+                        manager.setPointShowRange(newName, currentShowRange[0]);
+                        manager.setPointDisplayColor(newName, currentColor[0]);
+                        // 删除旧名称据点
+                        manager.removePoint(nodeName);
+                    } else {
+                        manager.setPointOwner(nodeName, newOwner.isEmpty() ? null : newOwner);
+                        manager.setPointRadius(nodeName, newRadius);
+                        manager.setPointShowRange(nodeName, currentShowRange[0]);
+                        manager.setPointDisplayColor(nodeName, currentColor[0]);
+                    }
+                }
+                ToastNotification.push(ToastNotification.Type.SUCCESS,
+                        Component.translatable("toast.capture_point_graph.advanced_config.saved", newName.isEmpty() ? nodeName : newName));
+                mc.setScreen(null);
+                reopen(level);
+            });
+
+            var cancelBtn = new Button()
+                    .setText(Component.translatable("gui.capture_point_graph.dialog.cancel"));
+            cancelBtn.layout(l -> l.flex(1).heightPercent(100));
+            cancelBtn.setOnClick(e -> { mc.setScreen(null); reopen(level); });
+            btnRow.addChildren(saveBtn, cancelBtn);
+            root.addChildren(btnRow);
+
+            var wrap = new UIElement()
+                    .layout(l -> l.widthPercent(100).heightPercent(100).paddingAll(0).gapAll(0)
+                            .justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER)
+                            .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
+            wrap.addChildren(root);
+
+            var ui = ModularUI.of(UI.of(wrap));
+            mc.setScreen(new ModularUIScreen(ui,
+                    Component.translatable("gui.capture_point_graph.dialog.edit_properties.point", nodeName)));
+
+        } else {
+            // === 区域节点编辑 ===
+            var entry = mgr.getZones().get(nodeName);
+            if (entry == null) {
+                ToastNotification.push(ToastNotification.Type.ERROR,
+                        Component.translatable("command.capturepoint.error.zone_not_found", nodeName));
+                return;
+            }
+
+            int pad = 10;
+            int hTitle = 16;
+            int hSep = 1;
+            int hLabel = 12;
+            int hField = 24;
+            int hBtn = 28;
+            int gapBig = 6;
+            int gapSmall = 3;
+
+            int panelH = pad + hTitle + gapSmall + hSep + gapBig
+                    + 4 * (hLabel + gapSmall + hField + gapBig)
+                    + hBtn + pad;
+
+            var root = new UIElement()
+                    .layout(l -> l.width(panelW).height(panelH).paddingAll(pad)
+                            .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN))
+                    .style(s -> s.background(Sprites.BORDER)
+                            .backgroundTexture(new ColorRectTexture(0xFF1A1A2E)));
+
+            // 标题
+            var title = new Label().setText(
+                    Component.translatable("gui.capture_point_graph.dialog.edit_properties.zone", nodeName));
+            title.layout(l -> l.widthPercent(100).height(hTitle));
+            title.textStyle(s -> s.fontSize(11.0f).textColor(0xFFEEEEEE));
+            root.addChildren(title);
+
+            root.addChildren(new UIElement().layout(l -> l.widthPercent(100).height(hSep))
+                    .style(s -> s.backgroundTexture(new ColorRectTexture(0xFF2A2A4A))));
+
+            // --- Name ---
+            root.addChildren(fieldLabel("gui.capture_point_graph.dialog.edit_properties.name", hLabel));
+            var nameField = new TextField();
+            nameField.layout(l -> l.widthPercent(100).height(hField));
+            nameField.textFieldStyle(s -> { s.textColor(0xFFFFFFFF); s.fontSize(12.0f); });
+            nameField.setValue(nodeName, false);
+            root.addChildren(nameField);
+
+            // --- Required Zone ---
+            root.addChildren(fieldLabel("node.capture_zone.option.required_zone", hLabel));
+            var reqZoneField = new TextField();
+            reqZoneField.layout(l -> l.widthPercent(100).height(hField));
+            reqZoneField.textFieldStyle(s -> { s.textColor(0xFFFFFFFF); s.fontSize(12.0f); });
+            reqZoneField.setValue(entry.requiredZone() != null ? entry.requiredZone() : "", false);
+            root.addChildren(reqZoneField);
+
+            // --- Edit Points (comma separated) ---
+            root.addChildren(fieldLabel("node.capture_zone.option.edit_points", hLabel));
+            var pointsField = new TextField();
+            pointsField.layout(l -> l.widthPercent(100).height(hField));
+            pointsField.textFieldStyle(s -> { s.textColor(0xFFFFFFFF); s.fontSize(12.0f); });
+            pointsField.setValue(String.join(", ", entry.capturePoints()), false);
+            root.addChildren(pointsField);
+
+            // --- Description ---
+            root.addChildren(fieldLabel("node.capture_zone.option.description", hLabel));
+            var descField = new TextField();
+            descField.layout(l -> l.widthPercent(100).height(hField));
+            descField.textFieldStyle(s -> { s.textColor(0xFFFFFFFF); s.fontSize(12.0f); });
+            descField.setValue("", false);
+            root.addChildren(descField);
+
+            // --- Buttons ---
+            var btnRow = new UIElement()
+                    .layout(l -> l.widthPercent(100).height(hBtn)
+                            .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(6));
+            var saveBtn = new Button()
+                    .setText(Component.translatable("gui.capture_point_graph.dialog.advanced_config.save"));
+            saveBtn.layout(l -> l.flex(1).heightPercent(100));
+            saveBtn.setOnClick(e -> {
+                String newName = nameField.getText().trim();
+                String reqZone = reqZoneField.getText().trim();
+                String pointsStr = pointsField.getText().trim();
+                var manager = getManager(level);
+                if (manager != null) {
+                    if (!newName.equals(nodeName) && !newName.isEmpty()) {
+                        // 创建新区域，复制数据
+                        if (!manager.getZones().containsKey(newName)) {
+                            manager.createZone(newName, null);
+                        }
+                        // 设置依赖
+                        manager.setZoneRequiredZone(newName, reqZone.isEmpty() ? null : reqZone);
+                        // 添加据点
+                        if (!pointsStr.isEmpty()) {
+                            for (var pn : pointsStr.split(",")) {
+                                pn = pn.trim();
+                                if (!pn.isEmpty() && manager.getPoints().containsKey(pn)) {
+                                    manager.addPointToZone(newName, pn);
+                                }
+                            }
+                        }
+                        // 删除旧区域
+                        manager.removeZone(nodeName);
+                    } else {
+                        // 更新依赖
+                        manager.setZoneRequiredZone(nodeName, reqZone.isEmpty() ? null : reqZone);
+                        // 先清空再添加据点
+                        for (var cpName : new java.util.ArrayList<>(entry.capturePoints())) {
+                            manager.removePointFromZone(nodeName, cpName);
+                        }
+                        if (!pointsStr.isEmpty()) {
+                            for (var pn : pointsStr.split(",")) {
+                                pn = pn.trim();
+                                if (!pn.isEmpty() && manager.getPoints().containsKey(pn)) {
+                                    manager.addPointToZone(nodeName, pn);
+                                }
+                            }
+                        }
+                    }
+                }
+                ToastNotification.push(ToastNotification.Type.SUCCESS,
+                        Component.translatable("toast.capture_point_graph.advanced_config.saved", newName.isEmpty() ? nodeName : newName));
+                mc.setScreen(null);
+                reopen(level);
+            });
+
+            var cancelBtn = new Button()
+                    .setText(Component.translatable("gui.capture_point_graph.dialog.cancel"));
+            cancelBtn.layout(l -> l.flex(1).heightPercent(100));
+            cancelBtn.setOnClick(e -> { mc.setScreen(null); reopen(level); });
+            btnRow.addChildren(saveBtn, cancelBtn);
+            root.addChildren(btnRow);
+
+            var wrap = new UIElement()
+                    .layout(l -> l.widthPercent(100).heightPercent(100).paddingAll(0).gapAll(0)
+                            .justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER)
+                            .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
+            wrap.addChildren(root);
+
+            var ui = ModularUI.of(UI.of(wrap));
+            mc.setScreen(new ModularUIScreen(ui,
+                    Component.translatable("gui.capture_point_graph.dialog.edit_properties.zone", nodeName)));
+        }
+    }
+
+    /** 创建一个带有标签文本的标签 UIElement（辅助方法） */
+    private static UIElement fieldLabel(String langKey, int height) {
+        var label = new Label().setText(Component.translatable(langKey));
+        label.layout(l -> l.widthPercent(100).height(height));
+        label.textStyle(s -> s.fontSize(10.0f).textColor(0xFFCCCCCC));
+        return label;
+    }
+
+    /** 更新切换按钮文本 */
+    private static void updateToggleText(Button btn, boolean on) {
+        btn.setText(Component.translatable(
+                on ? "gui.capture_point_graph.dialog.advanced_config.toggle.on"
+                        : "gui.capture_point_graph.dialog.advanced_config.toggle.off"));
+    }
+
+    /**
+     * 简易颜色选择器 inline 弹窗，返回 selectedColor。
+     */
+    private static int openColorPickerInline(Minecraft mc, int currentColor) {
+        // 预设颜色列表
+        int[] colors = {
+                0xFFFF4444, 0xFFFF9800, 0xFFFFEB3B, 0xFF4CAF50,
+                0xFF2196F3, 0xFF9C27B0, 0xFFFFFFFF, 0xFF000000
+        };
+        int cols = 4;
+        float swatchSize = 36;
+        float gap = 6;
+        float pad = 10;
+        float panelW = cols * (swatchSize + gap) + gap + pad * 2;
+        float panelH = (float) Math.ceil(colors.length / (float) cols) * (swatchSize + gap) + gap + pad * 2 + 20;
+
+        var root = new UIElement()
+                .layout(l -> l.width(panelW).height(panelH).paddingAll(pad))
+                .style(s -> s.background(Sprites.BORDER)
+                        .backgroundTexture(new ColorRectTexture(0xFF1A1A2E)));
+
+        var grid = new UIElement()
+                .layout(l -> l.widthPercent(100).height(panelH - pad * 2 - 24)
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW)
+                        .flexWrap(dev.vfyjxf.taffy.style.FlexWrap.WRAP).gapAll(gap));
+
+        final int[] result = { currentColor };
+        for (int color : colors) {
+            int fc = color;
+            var swatch = new UIElement()
+                    .layout(l -> l.width(swatchSize).height(swatchSize))
+                    .style(s -> s.background(Sprites.BORDER)
+                            .backgroundTexture(new ColorRectTexture(fc)));
+            swatch.addEventListener(com.lowdragmc.lowdraglib2.gui.ui.event.UIEvents.MOUSE_DOWN, ev -> {
+                result[0] = fc;
+            });
+            grid.addChildren(swatch);
+        }
+        root.addChildren(grid);
+
+        var hint = new Label().setText(Component.translatable("gui.capture_point_block.dialog.color_picker.hint"));
+        hint.layout(l -> l.widthPercent(100).height(18));
+        hint.textStyle(s -> s.fontSize(9.0f).textColor(0xFF888888));
+        root.addChildren(hint);
+
+        var wrap = new UIElement()
+                .layout(l -> l.widthPercent(100).heightPercent(100).paddingAll(0).gapAll(0)
+                        .justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER)
+                        .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
+        wrap.addChildren(root);
+
+        var ui = ModularUI.of(UI.of(wrap));
+        mc.setScreen(new ModularUIScreen(ui,
+                Component.translatable("gui.capture_point_block.dialog.color_picker")));
+
+        return result[0];
+    }
+
     // ====== 内部工具 ======
 
     private static void openInputDialog(

@@ -96,6 +96,7 @@
   "gui.capture_point_graph.menu.create_zone": "创建区域",
   "gui.capture_point_graph.menu.delete": "删除",
   "gui.capture_point_graph.menu.advanced_config": "高级配置",
+  "gui.capture_point_graph.menu.edit_properties": "编辑属性",
   "gui.capture_point_graph.menu.list_status": "查看状态",
   "gui.capture_point_graph.menu.refresh": "刷新",
   "gui.capture_point_graph.menu.close": "关闭",
@@ -178,5 +179,21 @@
   "command.capturepoint.removefromallzones.not_in_zone": "'%s' 不在任何区域中",
 
   "toast.capture_point_graph.saved": "节点图保存成功",
-  "toast.capture_point_graph.advanced_config.saved": "据点 '%s' 的配置已保存"
+  "toast.capture_point_graph.advanced_config.saved": "据点 '%s' 的配置已保存",
+  "toast.capture_point_graph.edit_mode.on": "编辑模式：已开启 - 节点属性可编辑",
+  "toast.capture_point_graph.edit_mode.off": "编辑模式：已关闭",
+
+  "gui.attack_defense_capture_point_xkmxz.graph.edit_mode.on": "[编辑]",
+  "gui.attack_defense_capture_point_xkmxz.graph.edit_mode.off": "编辑",
+
+  "gui.capture_point_graph.dialog.edit_properties.point": "编辑据点属性 - %s",
+  "gui.capture_point_graph.dialog.edit_properties.zone": "编辑区域属性 - %s",
+  "gui.capture_point_graph.dialog.edit_properties.name": "名称：",
+
+  "node.capture_point.option.radius": "半径",
+  "node.capture_point.option.display_color": "显示颜色",
+  "node.capture_point.option.show_range": "显示范围",
+
+  "node.capture_zone.option.description": "描述",
+  "node.capture_zone.option.edit_points": "成员据点（逗号分隔）"
 }
