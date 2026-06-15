@@ -112,7 +112,8 @@ public class CaptureManager extends SavedData {
         }
     }
 
-    public record ZoneEntry(String name, List<String> capturePoints, @Nullable String requiredZone, boolean captured) {
+    public record ZoneEntry(String name, List<String> capturePoints, @Nullable String requiredZone, boolean captured,
+                            @Nullable String ownerTeam) {
 
         public CompoundTag toNbt() {
             var tag = new CompoundTag();
@@ -124,6 +125,7 @@ public class CaptureManager extends SavedData {
             tag.put("capturePoints", list);
             if (requiredZone != null) tag.putString("requiredZone", requiredZone);
             tag.putBoolean("captured", captured);
+            if (ownerTeam != null) tag.putString("ownerTeam", ownerTeam);
             return tag;
         }
 
@@ -136,19 +138,24 @@ public class CaptureManager extends SavedData {
             }
             var requiredZone = tag.contains("requiredZone") ? tag.getString("requiredZone") : null;
             var captured = tag.contains("captured") && tag.getBoolean("captured");
-            return new ZoneEntry(name, points, requiredZone, captured);
+            var ownerTeam = tag.contains("ownerTeam") ? tag.getString("ownerTeam") : null;
+            return new ZoneEntry(name, points, requiredZone, captured, ownerTeam);
         }
 
         public ZoneEntry withCaptured(boolean newCaptured) {
-            return new ZoneEntry(name, capturePoints, requiredZone, newCaptured);
+            return new ZoneEntry(name, capturePoints, requiredZone, newCaptured, ownerTeam);
+        }
+
+        public ZoneEntry withOwnerTeam(@Nullable String newOwnerTeam) {
+            return new ZoneEntry(name, capturePoints, requiredZone, captured, newOwnerTeam);
         }
 
         public ZoneEntry withCapturePoints(List<String> newCapturePoints) {
-            return new ZoneEntry(name, newCapturePoints, requiredZone, captured);
+            return new ZoneEntry(name, newCapturePoints, requiredZone, captured, ownerTeam);
         }
 
         public ZoneEntry withRequiredZone(@Nullable String newRequiredZone) {
-            return new ZoneEntry(name, capturePoints, newRequiredZone, captured);
+            return new ZoneEntry(name, capturePoints, newRequiredZone, captured, ownerTeam);
         }
     }
 
@@ -293,12 +300,14 @@ public class CaptureManager extends SavedData {
         }
     }
 
-    /** 据点状态变更后，重新计算其所属区域的占领状态 */
+    /** 据点状态变更后，重新计算其所属区域的占领状态 + 多数决 ownerTeam */
     private void recalcZoneCapturedForPoint(String pointName) {
         String zoneName = findZoneForPoint(pointName);
         if (zoneName == null) return;
         var zone = zones.get(zoneName);
         if (zone == null) return;
+
+        // 计算 captured：所有据点都被占领
         boolean allCaptured = true;
         for (var cpName : zone.capturePoints()) {
             var cp = points.get(cpName);
@@ -307,7 +316,28 @@ public class CaptureManager extends SavedData {
                 break;
             }
         }
-        zones.put(zoneName, zone.withCaptured(allCaptured));
+
+        // 计算 ownerTeam：多数决
+        String newOwnerTeam = null;
+        var teamCount = new HashMap<String, Integer>();
+        for (var cpName : zone.capturePoints()) {
+            var cp = points.get(cpName);
+            if (cp != null && cp.ownerTeam() != null) {
+                teamCount.merge(cp.ownerTeam(), 1, Integer::sum);
+            }
+        }
+        if (!teamCount.isEmpty()) {
+            int maxCount = Collections.max(teamCount.values());
+            // 筛选出达到 maxCount 的队伍，只有唯一一个才设为 ownerTeam
+            var topTeams = teamCount.entrySet().stream()
+                    .filter(e -> e.getValue() == maxCount)
+                    .toList();
+            if (topTeams.size() == 1) {
+                newOwnerTeam = topTeams.get(0).getKey();
+            }
+        }
+
+        zones.put(zoneName, zone.withCaptured(allCaptured).withOwnerTeam(newOwnerTeam));
     }
 
     public void setPointRadius(String name, double radius) {
@@ -335,7 +365,7 @@ public class CaptureManager extends SavedData {
     }
 
     public void createZone(String name, @Nullable String requiredZone) {
-        zones.put(name, new ZoneEntry(name, new ArrayList<>(), requiredZone, false));
+        zones.put(name, new ZoneEntry(name, new ArrayList<>(), requiredZone, false, null));
         bumpVersion();
     }
 
@@ -350,7 +380,7 @@ public class CaptureManager extends SavedData {
             var newList = new ArrayList<>(zone.capturePoints());
             if (!newList.contains(pointName)) {
                 newList.add(pointName);
-                zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured()));
+                zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam()));
                 bumpVersion();
             }
         }
@@ -361,7 +391,7 @@ public class CaptureManager extends SavedData {
         if (zone != null) {
             var newList = new ArrayList<>(zone.capturePoints());
             newList.remove(pointName);
-            zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured()));
+            zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam()));
             bumpVersion();
         }
     }
@@ -376,7 +406,7 @@ public class CaptureManager extends SavedData {
         var zone = zones.get(zoneName);
         if (zone != null) {
             // 保留原有据点列表和占领状态，仅修改区域依赖
-            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), requiredZone, zone.captured()));
+            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), requiredZone, zone.captured(), zone.ownerTeam()));
             bumpVersion();
         }
     }
@@ -426,11 +456,11 @@ public class CaptureManager extends SavedData {
                 var point = entry.getValue();
                 points.put(name, point.withOwnerTeam(team));
             }
-            // 将所有区域设为已占领
+            // 将所有区域设为已占领 + 防守方队伍
             for (var entry : List.copyOf(zones.entrySet())) {
                 var name = entry.getKey();
                 var zone = entry.getValue();
-                zones.put(name, zone.withCaptured(true));
+                zones.put(name, zone.withCaptured(true).withOwnerTeam(team));
             }
         }
         bumpVersion();

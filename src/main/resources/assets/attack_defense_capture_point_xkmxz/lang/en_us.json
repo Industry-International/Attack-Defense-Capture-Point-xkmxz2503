@@ -101,6 +101,8 @@
 
   "node.capture_zone.display_name": "Capture Zone",
   "node.capture_zone.option.captured": "Captured",
+  "node.capture_zone.option.owner_team": "Owner Team",
+  "node.capture_zone.option.zone_progress": "Control Progress",
   "node.capture_zone.option.required_zone": "Requires Zone",
   "node.capture_zone.option.points": "Member Points",
   "node.capture_zone.port.point_in": "Member Points",

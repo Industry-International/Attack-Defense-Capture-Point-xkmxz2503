@@ -101,6 +101,8 @@
 
   "node.capture_zone.display_name": "占领区域",
   "node.capture_zone.option.captured": "已占领",
+  "node.capture_zone.option.owner_team": "占领队伍",
+  "node.capture_zone.option.zone_progress": "控制进度",
   "node.capture_zone.option.required_zone": "依赖区域",
   "node.capture_zone.option.points": "成员据点",
   "node.capture_zone.port.point_in": "成员据点",

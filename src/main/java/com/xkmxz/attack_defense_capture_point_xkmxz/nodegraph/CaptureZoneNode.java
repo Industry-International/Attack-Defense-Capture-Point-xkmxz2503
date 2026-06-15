@@ -39,6 +39,16 @@ public class CaptureZoneNode extends Node {
                 .withDefaultValue(false)
                 .withDisplayName(Component.translatable("node.capture_zone.option.captured"))
                 .build();
+        // owner_team 区域占领队伍（只读显示）
+        context.addOption("owner_team", String.class)
+                .withDefaultValue("")
+                .withDisplayName(Component.translatable("node.capture_zone.option.owner_team"))
+                .build();
+        // zone_progress 区域控制进度（只读显示）
+        context.addOption("zone_progress", String.class)
+                .withDefaultValue("")
+                .withDisplayName(Component.translatable("node.capture_zone.option.zone_progress"))
+                .build();
         // requiredZone 依赖区域名称（编辑模式下可编辑）
         context.addOption("required_zone", String.class)
                 .withDefaultValue("")

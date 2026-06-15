@@ -336,7 +336,7 @@ public class CapturePointGraphScreen {
             }
 
             newZones.put(name, new CaptureManager.ZoneEntry(
-                    name, cpList, reqZone.isEmpty() ? null : reqZone, zoneCaptured));
+                    name, cpList, reqZone.isEmpty() ? null : reqZone, zoneCaptured, null));
         }
 
         // 规则②：根据所有子据点的占领状态重新计算区域 captured
@@ -630,7 +630,7 @@ public class CapturePointGraphScreen {
                                 nm.setTitle(Component.literal(name + " [" + status + " " + ptCount + "pts" + access + "]"));
                                 // 编辑模式下不覆盖选项值
                                 if (!editMode) {
-                                    syncZoneOptions(nm, entry, captured);
+                                    syncZoneOptions(nm, entry, captured, points);
                                 }
                             } else {
                                 nm.setTitle(Component.literal(name));
@@ -681,13 +681,40 @@ public class CapturePointGraphScreen {
     /**
      * 同步区域节点选项（captured / required_zone / points / description / edit_points）
      */
-    private static void syncZoneOptions(NodeModel nm, CaptureManager.ZoneEntry entry, boolean captured) {
+    private static void syncZoneOptions(NodeModel nm, CaptureManager.ZoneEntry entry, boolean captured,
+                                         Map<String, CaptureManager.CapturePointEntry> points) {
         setOptionValue(nm, "captured", captured);
+        setOptionValue(nm, "owner_team", entry.ownerTeam() != null ? entry.ownerTeam() : "");
         setOptionValue(nm, "required_zone", entry.requiredZone() != null ? entry.requiredZone() : "");
         setOptionValue(nm, "points", String.join(", ", entry.capturePoints()));
+        // 计算区域控制进度
+        String progressStr = buildZoneProgressString(entry, points);
+        setOptionValue(nm, "zone_progress", progressStr);
         // 编辑模式额外字段
         setOptionValue(nm, "description", "");
         setOptionValue(nm, "edit_points", String.join(", ", entry.capturePoints()));
+    }
+
+    /** 构建区域控制进度字符串，如 "红:75% 蓝:25%" */
+    private static String buildZoneProgressString(CaptureManager.ZoneEntry entry,
+                                                   Map<String, CaptureManager.CapturePointEntry> points) {
+        var teamCount = new LinkedHashMap<String, Integer>();
+        int total = 0;
+        for (var cpName : entry.capturePoints()) {
+            var cp = points.get(cpName);
+            if (cp != null && cp.ownerTeam() != null) {
+                teamCount.merge(cp.ownerTeam(), 1, Integer::sum);
+                total++;
+            }
+        }
+        if (total == 0) return "无";
+        var sb = new StringBuilder();
+        for (var e : teamCount.entrySet()) {
+            if (!sb.isEmpty()) sb.append(" ");
+            int pct = e.getValue() * 100 / total;
+            sb.append(e.getKey()).append(":").append(pct).append("%");
+        }
+        return sb.toString();
     }
 
     // ================================================================
