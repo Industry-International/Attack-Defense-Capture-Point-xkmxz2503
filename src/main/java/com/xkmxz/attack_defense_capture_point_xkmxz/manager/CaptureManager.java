@@ -24,6 +24,7 @@ public class CaptureManager extends SavedData {
 
     private final Map<String, CapturePointEntry> points = new LinkedHashMap<>();
     private final Map<String, ZoneEntry> zones = new LinkedHashMap<>();
+    private final Map<String, NodeLayout> nodeLayouts = new LinkedHashMap<>();
     private long version = 0; // 数据版本号，每次写入递增，用于 GUI 检测外部修改
     @Nullable
     private String defenderTeam = null; // 默认防守方队伍，不为 null 时所有据点初始归此队伍
@@ -159,6 +160,24 @@ public class CaptureManager extends SavedData {
         }
     }
 
+    // ---- Node Layout (视觉布局，不参与游戏逻辑) ----
+
+    public record NodeLayout(float x, float y) {
+        private static final String TAG_X = "x";
+        private static final String TAG_Y = "y";
+
+        public CompoundTag toNbt() {
+            var tag = new CompoundTag();
+            tag.putFloat(TAG_X, x);
+            tag.putFloat(TAG_Y, y);
+            return tag;
+        }
+
+        public static NodeLayout fromNbt(CompoundTag tag) {
+            return new NodeLayout(tag.getFloat(TAG_X), tag.getFloat(TAG_Y));
+        }
+    }
+
     // ---- Singleton Access ----
 
     public static CaptureManager get(Level level) {
@@ -205,6 +224,26 @@ public class CaptureManager extends SavedData {
                 points.size(), zones.size(), version);
     }
 
+    /**
+     * 批量应用 GUI 编辑器的完整数据快照 + 节点布局。
+     * 布局数据不触发版本号变更（不影响游戏逻辑）。
+     */
+    public void applyGraphSnapshotWithLayout(Map<String, CapturePointEntry> newPoints,
+                                              Map<String, ZoneEntry> newZones,
+                                              Map<String, NodeLayout> layouts) {
+        points.clear();
+        zones.clear();
+        points.putAll(newPoints);
+        zones.putAll(newZones);
+        nodeLayouts.clear();
+        nodeLayouts.putAll(layouts);
+        bumpVersion();
+        LOGGER.info("Applied graph snapshot with layout: {} points, {} zones, {} layouts (version {})",
+                points.size(), zones.size(), layouts.size(), version);
+    }
+
+    // ---- Node Layout ----
+
     // ---- Data Access ----
 
     public Map<String, CapturePointEntry> getPoints() {
@@ -213,6 +252,11 @@ public class CaptureManager extends SavedData {
 
     public Map<String, ZoneEntry> getZones() {
         return Collections.unmodifiableMap(zones);
+    }
+
+    /** 获取所有节点布局的不可修改视图 */
+    public Map<String, NodeLayout> getNodeLayouts() {
+        return Collections.unmodifiableMap(nodeLayouts);
     }
 
     public void addOrUpdatePoint(String name, BlockPos pos) {
@@ -486,12 +530,24 @@ public class CaptureManager extends SavedData {
         tag.putLong(TAG_VERSION, version);
         if (defenderTeam != null) tag.putString("defenderTeam", defenderTeam);
 
+        // 保存节点布局
+        if (!nodeLayouts.isEmpty()) {
+            var layoutsList = new ListTag();
+            for (var entry : nodeLayouts.entrySet()) {
+                var layoutTag = entry.getValue().toNbt();
+                layoutTag.putString("name", entry.getKey());
+                layoutsList.add(layoutTag);
+            }
+            tag.put("nodeLayouts", layoutsList);
+        }
+
         return tag;
     }
 
     private void load(CompoundTag tag, HolderLookup.Provider registries) {
         points.clear();
         zones.clear();
+        nodeLayouts.clear();
         defenderTeam = null;
 
         var pointsList = tag.getList("points", Tag.TAG_COMPOUND);
@@ -509,6 +565,18 @@ public class CaptureManager extends SavedData {
         version = tag.contains(TAG_VERSION, Tag.TAG_LONG) ? tag.getLong(TAG_VERSION) : 0;
         if (tag.contains("defenderTeam")) defenderTeam = tag.getString("defenderTeam");
 
-        LOGGER.info("Loaded {} capture points, {} zones (version {}), defender={}", points.size(), zones.size(), version, defenderTeam);
+        // 加载节点布局
+        if (tag.contains("nodeLayouts", Tag.TAG_LIST)) {
+            var layoutsList = tag.getList("nodeLayouts", Tag.TAG_COMPOUND);
+            for (int i = 0; i < layoutsList.size(); i++) {
+                var layoutTag = layoutsList.getCompound(i);
+                var name = layoutTag.getString("name");
+                if (!name.isEmpty()) {
+                    nodeLayouts.put(name, NodeLayout.fromNbt(layoutTag));
+                }
+            }
+        }
+
+        LOGGER.info("Loaded {} capture points, {} zones, {} layouts (version {}), defender={}", points.size(), zones.size(), nodeLayouts.size(), version, defenderTeam);
     }
 }

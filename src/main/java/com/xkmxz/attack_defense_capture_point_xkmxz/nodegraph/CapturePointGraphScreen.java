@@ -24,6 +24,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.*;
@@ -559,7 +560,7 @@ public class CapturePointGraphScreen {
      * 使用快照方式：构建完整数据 → 版本检测 → applyGraphSnapshot 原子写入。
      */
     private void saveGraph() {
-        var mgr = getServerCaptureManager();
+        var mgr = getCaptureManager();
         if (mgr == null) {
             ToastNotification.push(ToastNotification.Type.ERROR,
                     Component.literal("无法访问服务端数据，请使用命令 /capturepoint setcaptured 操作"));
@@ -572,18 +573,31 @@ public class CapturePointGraphScreen {
             var newPoints = snapshot.getKey();
             var newZones = snapshot.getValue();
 
+            // 收集所有节点的布局信息（保存画布上每个节点的位置）
+            var layouts = new LinkedHashMap<String, CaptureManager.NodeLayout>();
+            for (var element : graph.graphModel.getGraphElementModels()) {
+                if (element instanceof NodeModel nm) {
+                    String name = nm.getName();
+                    if (name == null || name.isEmpty()) continue;
+                    var pos = nm.getPosition();
+                    if (pos != null) {
+                        layouts.put(name, new CaptureManager.NodeLayout(pos.x(), pos.y()));
+                    }
+                }
+            }
+
             // 编辑模式下进行版本冲突检测
             if (editMode && snapshotVersion >= 0) {
                 long currentVersion = mgr.getVersion();
                 if (currentVersion != snapshotVersion) {
                     // 数据已被外部修改（命令/方块），弹出确认对话框
-                    openConflictDialog(mgr, newPoints, newZones);
+                    openConflictDialog(mgr, newPoints, newZones, layouts);
                     return;
                 }
             }
 
-            // 无冲突或非编辑模式：直接应用
-            mgr.applyGraphSnapshot(newPoints, newZones);
+            // 无冲突或非编辑模式：直接应用（含布局）
+            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts);
 
             // 立即同步所有已加载方块实体的渲染缓存
             var serverLevel = getServerLevel();
@@ -604,9 +618,10 @@ public class CapturePointGraphScreen {
     /**
      * 打开版本冲突对话框，询问用户是否覆盖外部修改的数据。
      */
-    private void openConflictDialog(ICaptureDataAccess access,
+    private void openConflictDialog(CaptureManager captureManager,
                                      Map<String, CaptureManager.CapturePointEntry> newPoints,
-                                     Map<String, CaptureManager.ZoneEntry> newZones) {
+                                     Map<String, CaptureManager.ZoneEntry> newZones,
+                                     Map<String, CaptureManager.NodeLayout> layouts) {
         var mc = mc();
         int dw = 340, dh = 130;
 
@@ -633,7 +648,13 @@ public class CapturePointGraphScreen {
                 Component.translatable("gui.capture_point_graph.dialog.conflict.overwrite"));
         overwriteBtn.layout(l -> l.flex(1).heightPercent(100));
         overwriteBtn.setOnClick(e -> {
-            access.applyGraphSnapshot(newPoints, newZones);
+            // 通过 CaptureManager 直接应用（接口没有布局方法）
+            var overwriteMgr = getCaptureManager();
+            if (overwriteMgr != null) {
+                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts);
+            } else {
+                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts);
+            }
 
             var sl = getServerLevel();
             if (sl != null) {
@@ -684,12 +705,15 @@ public class CapturePointGraphScreen {
 
     private void loadDataToGraph() {
         try {
-            var mgr = getServerCaptureManager();
+            var mgr = getCaptureManager();
             if (mgr == null) return;
 
             var points = mgr.getPoints();
             var zones = mgr.getZones();
             if (points.isEmpty() && zones.isEmpty()) return;
+
+            // 获取保存的节点布局（如果有的话）
+            var savedLayouts = mgr.getNodeLayouts();
 
             var pointModels = new LinkedHashMap<String, NodeModel>();
             var zoneModels = new LinkedHashMap<String, NodeModel>();
@@ -700,10 +724,11 @@ public class CapturePointGraphScreen {
             float gapY = 120;
             int idx = 0;
 
-            // 创建据点节点
+            // 创建据点节点（优先使用保存的布局）
             for (var entry : points.values()) {
-                float x = startX + (idx % 4) * gapX;
-                float y = startY + (idx / 4) * gapY;
+                var saved = savedLayouts.get(entry.name());
+                float x = saved != null ? saved.x() : (startX + (idx % 4) * gapX);
+                float y = saved != null ? saved.y() : (startY + (idx / 4) * gapY);
                 var node = new CapturePointNode();
                 var nodeModel = graph.graphModel.createNodeModel(node,
                         new org.joml.Vector2f(x, y));
@@ -713,11 +738,12 @@ public class CapturePointGraphScreen {
                 idx++;
             }
 
-            // 创建区域节点（右侧区域，使用独立计数器网格排列）
+            // 创建区域节点（优先使用保存的布局）
             int zoneIdx = 0;
             for (var entry : zones.values()) {
-                float x = startX + 250 + (zoneIdx % 3) * gapX;
-                float y = startY + (zoneIdx / 3) * gapY + gapY;
+                var saved = savedLayouts.get(entry.name());
+                float x = saved != null ? saved.x() : (startX + 250 + (zoneIdx % 3) * gapX);
+                float y = saved != null ? saved.y() : (startY + (zoneIdx / 3) * gapY + gapY);
                 var node = new CaptureZoneNode();
                 var nodeModel = graph.graphModel.createNodeModel(node,
                         new org.joml.Vector2f(x, y));
@@ -987,6 +1013,18 @@ public class CapturePointGraphScreen {
         if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
             var sl = mc.getSingleplayerServer().getLevel(level.dimension());
             if (sl != null) return ICaptureDataAccess.server(sl);
+        }
+        return null;
+    }
+
+    /** 获取 CaptureManager 原始实例（用于布局持久化等接口未暴露的操作） */
+    @Nullable
+    private CaptureManager getCaptureManager() {
+        if (level instanceof ServerLevel sl) return CaptureManager.get(sl);
+        var mc = mc();
+        if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
+            var sl = mc.getSingleplayerServer().getLevel(level.dimension());
+            if (sl != null) return CaptureManager.get(sl);
         }
         return null;
     }
