@@ -218,5 +218,25 @@
   "node.capture_point.option.show_range": "显示范围",
 
   "node.capture_zone.option.description": "描述",
-  "node.capture_zone.option.edit_points": "成员据点（逗号分隔）"
+  "node.capture_zone.option.edit_points": "成员据点（逗号分隔）",
+
+  "node.capture_decision.display_name": "判断器",
+  "node.capture_decision.port.target": "目标",
+  "node.capture_decision.port.true_out": "真",
+  "node.capture_decision.port.false_out": "假",
+  "node.capture_decision.option.condition": "判断条件",
+  "node.capture_decision.option.target_team": "目标队伍",
+  "node.capture_decision.option.progress_threshold": "进度阈值",
+
+  "gui.capture_point_graph.menu.create_decision": "创建判断器",
+  "gui.capture_point_graph.dialog.create_decision.title": "创建判断器节点",
+  "gui.capture_point_graph.dialog.create_decision.label": "输入判断器名称：",
+  "gui.capture_point_graph.dialog.create_decision.placeholder": "判断器名称",
+  "gui.capture_point_graph.dialog.delete_decision.title": "删除判断器",
+  "gui.capture_point_graph.dialog.delete_decision.message": "确定要删除判断器 '%s' 吗？",
+
+  "toast.capture_decision.create.success": "已创建判断器 '%s'",
+  "toast.capture_decision.create.empty": "判断器名称不能为空",
+  "toast.capture_decision.delete.success": "已删除判断器 '%s'",
+  "toast.capture_decision.edit_hint": "判断器节点请在编辑模式的选项面板中配置"
 }

@@ -85,9 +85,39 @@ public final class CapturePointGraphDialogs {
         );
     }
 
+    // ====== 创建判断器 ======
+
+    public static void openCreateDecisionDialog(Level level) {
+        openInputDialog(
+                Component.translatable("gui.capture_point_graph.dialog.create_decision.title"),
+                Component.translatable("gui.capture_point_graph.dialog.create_decision.label"),
+                "",
+                (name) -> {
+                    if (name.isEmpty()) {
+                        ToastNotification.push(ToastNotification.Type.ERROR,
+                                Component.translatable("toast.capture_decision.create.empty"));
+                        reopen(level);
+                        return;
+                    }
+                    // 判断器节点不需要写入 CaptureManager，
+                    // 它只在节点图中存在，保存时通过 buildSnapshotFromGraph 处理条件路由
+                    ToastNotification.push(ToastNotification.Type.SUCCESS,
+                            Component.translatable("toast.capture_decision.create.success", name));
+                    reopen(level);
+                },
+                level
+        );
+    }
+
     // ====== 删除确认 ======
 
-    public static void openDeleteConfirmDialog(Level level, String name, boolean isZone) {
+    /**
+     * 打开删除确认对话框。
+     * @param level 世界
+     * @param name 节点名称
+     * @param type 节点类型: "point" / "zone" / "decision"
+     */
+    public static void openDeleteConfirmDialog(Level level, String name, String type) {
         // 安全检查：名称不能为空
         if (name == null || name.isEmpty()) {
             ToastNotification.push(ToastNotification.Type.ERROR,
@@ -104,16 +134,29 @@ public final class CapturePointGraphDialogs {
                 .style(s -> s.background(Sprites.BORDER)
                         .backgroundTexture(new ColorRectTexture(BG_COLOR)));
 
-        var titleText = Component.translatable(
-                isZone ? "gui.capture_point_graph.dialog.delete_zone.title"
-                        : "gui.capture_point_graph.dialog.delete_point.title");
+        String titleLangKey;
+        String msgLangKey;
+        String toastLangKey;
+
+        if ("zone".equals(type)) {
+            titleLangKey = "gui.capture_point_graph.dialog.delete_zone.title";
+            msgLangKey = "gui.capture_point_graph.dialog.delete_zone.message";
+            toastLangKey = "toast.capture_zone.delete.success";
+        } else if ("decision".equals(type)) {
+            titleLangKey = "gui.capture_point_graph.dialog.delete_decision.title";
+            msgLangKey = "gui.capture_point_graph.dialog.delete_decision.message";
+            toastLangKey = "toast.capture_decision.delete.success";
+        } else {
+            titleLangKey = "gui.capture_point_graph.dialog.delete_point.title";
+            msgLangKey = "gui.capture_point_graph.dialog.delete_point.message";
+            toastLangKey = "toast.capture_point.delete.success";
+        }
+
+        var titleText = Component.translatable(titleLangKey);
         var title = new Label().setText(titleText);
         title.layout(l -> l.widthPercent(100).heightAuto());
 
-        var msgText = Component.translatable(
-                isZone ? "gui.capture_point_graph.dialog.delete_zone.message"
-                        : "gui.capture_point_graph.dialog.delete_point.message",
-                name);
+        var msgText = Component.translatable(msgLangKey, name);
         var msg = new Label().setText(msgText);
         msg.layout(l -> l.widthPercent(100).heightAuto());
 
@@ -131,16 +174,14 @@ public final class CapturePointGraphDialogs {
             // 直接 Java 调用删除
             var mgr = getManager(level);
             if (mgr != null) {
-                if (isZone) {
+                if ("zone".equals(type)) {
                     mgr.removeZone(name);
-                } else {
+                } else if ("point".equals(type) || "decision".equals(type)) {
                     mgr.removePoint(name);
                 }
             }
             ToastNotification.push(ToastNotification.Type.SUCCESS,
-                    Component.translatable(
-                            isZone ? "toast.capture_zone.delete.success" : "toast.capture_point.delete.success",
-                            name));
+                    Component.translatable(toastLangKey, name));
             reopen(level);
         });
 
@@ -544,7 +585,7 @@ public final class CapturePointGraphDialogs {
      * 区域节点可编辑：name、requiredZone、edit_points、description
      * 所有变更直接通过 CaptureManager Java API 回写。
      */
-    public static void openEditPropertiesDialog(Level level, String nodeName, boolean isPoint) {
+    public static void openEditPropertiesDialog(Level level, String nodeName, String nodeType) {
         var mc = Minecraft.getInstance();
         var mgr = getManager(level);
         if (mgr == null) {
@@ -555,7 +596,7 @@ public final class CapturePointGraphDialogs {
 
         int panelW = 340;
 
-        if (isPoint) {
+        if ("point".equals(nodeType)) {
             // === 据点节点编辑 ===
             var entry = mgr.getPoints().get(nodeName);
             if (entry == null) {
@@ -732,7 +773,7 @@ public final class CapturePointGraphDialogs {
             mc.setScreen(new ModularUIScreen(ui,
                     Component.translatable("gui.capture_point_graph.dialog.edit_properties.point", nodeName)));
 
-        } else {
+        } else if ("zone".equals(nodeType)) {
             // === 区域节点编辑 ===
             var entry = mgr.getZones().get(nodeName);
             if (entry == null) {
@@ -872,6 +913,15 @@ public final class CapturePointGraphDialogs {
             var ui = ModularUI.of(UI.of(wrap));
             mc.setScreen(new ModularUIScreen(ui,
                     Component.translatable("gui.capture_point_graph.dialog.edit_properties.zone", nodeName)));
+            return;
+        }
+
+        // 判断器节点：在编辑模式的选项面板中直接配置即可，此处仅提示
+        if ("decision".equals(nodeType)) {
+            ToastNotification.push(ToastNotification.Type.INFO,
+                    Component.translatable("toast.capture_decision.edit_hint"));
+            reopen(level);
+            return;
         }
     }
 

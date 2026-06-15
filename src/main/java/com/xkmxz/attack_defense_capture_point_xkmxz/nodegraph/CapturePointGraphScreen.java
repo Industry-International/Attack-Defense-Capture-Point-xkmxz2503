@@ -212,20 +212,25 @@ public class CapturePointGraphScreen {
     }
 
     /**
-     * 从节点图中构建完整数据快照。
-     * 读取所有节点模型中的选项值，同时解析连线（wire）关系，
-     * 构造新的 points/zones 映射。
-     * <p>
-     * 区域包含的据点列表只从连线（wire）解析（point_in 端口已设为 MULTIPLE，
-     * 支持多个据点连线到同一区域）。删除连线即删除据点归属关系。
+     * 从节点图中构建完整数据快照。<br>
+     * <br>
+     * <b>处理流程：</b><br>
+     * 1. 收集所有节点（据点/区域/判断器）<br>
+     * 2. 解析连线：直连（point→zone）、判断器输入（point→decision）、<br>
+     *    判断器输出（decision→zone）、区域依赖（zone→zone）<br>
+     * 3. 构建据点数据<br>
+     * 4. 应用判断器条件路由：根据每个判断器的条件，将据点分配到 true_out 或 false_out<br>
+     * 5. 构建区域数据（直连据点 + 判断器路由据点）<br>
+     * 6. 双向同步规则
      */
     private Map.Entry<Map<String, CaptureManager.CapturePointEntry>, Map<String, CaptureManager.ZoneEntry>> buildSnapshotFromGraph() {
         var newPoints = new LinkedHashMap<String, CaptureManager.CapturePointEntry>();
         var newZones = new LinkedHashMap<String, CaptureManager.ZoneEntry>();
 
-        // 第一遍：收集所有节点
+        // ---- Phase 1: 收集所有节点 ----
         var pointModels = new HashMap<String, NodeModel>();
         var zoneModels = new HashMap<String, NodeModel>();
+        var decisionModels = new HashMap<String, NodeModel>();
 
         for (var element : graph.graphModel.getGraphElementModels()) {
             if (element instanceof NodeModel nm) {
@@ -233,17 +238,24 @@ public class CapturePointGraphScreen {
                 if (name == null || name.isEmpty()) continue;
                 if (hasOutputPort(nm, "point_signal")) {
                     pointModels.put(name, nm);
+                } else if (hasInputPort(nm, "target")) {
+                    // 判断器节点：具有 target 输入端口
+                    decisionModels.put(name, nm);
                 } else if (hasOutputPort(nm, "zone_out") || hasInputPort(nm, "point_in")) {
                     zoneModels.put(name, nm);
                 }
             }
         }
 
-        // ---- 解析连线，确定据点→区域的归属关系和区域→区域的依赖关系 ----
-        // wireBasedZonePoints: zoneName → [pointName, ...] 从连线中解析
+        // ---- Phase 2: 解析连线 ----
+        // wireBasedZonePoints: zoneName → [pointName, ...] 直连（不经过判断器）
         var wireBasedZonePoints = new LinkedHashMap<String, List<String>>();
-        // wireBasedRequiredZone: zoneName → requiredZoneName 从区域依赖连线中解析
+        // wireBasedRequiredZone: zoneName → requiredZoneName 区域依赖
         var wireBasedRequiredZone = new LinkedHashMap<String, String>();
+        // decisionInputs: decisionName → [pointName, ...] 判断器输入（连接到target端口的据点）
+        var decisionInputs = new LinkedHashMap<String, List<String>>();
+        // decisionOutputs: decisionName → (portName → [zoneName, ...]) 判断器各输出端口连接的区域
+        var decisionOutputs = new LinkedHashMap<String, Map<String, List<String>>>();
 
         for (var element : graph.graphModel.getGraphElementModels()) {
             if (element instanceof WireModel wire) {
@@ -251,7 +263,6 @@ public class CapturePointGraphScreen {
                 var toPort = wire.getToPort();
                 if (fromPort == null || toPort == null) continue;
 
-                // 获取两个端口所属的 NodeModel
                 var fromNode = fromPort.getNodeModel();
                 var toNode = toPort.getNodeModel();
                 if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
@@ -260,25 +271,36 @@ public class CapturePointGraphScreen {
                 String toName = toNm.getName();
                 if (fromName == null || toName == null) continue;
 
-                // 判断连线类型：
-                // 1. 据点→区域连接: from=point_signal(O)  to=point_in(I)
+                // 1. 据点→区域直连: from=point_signal(O)  to=point_in(I)
                 if (hasOutputPort(fromNm, "point_signal") && hasInputPort(toNm, "point_in")) {
                     wireBasedZonePoints.computeIfAbsent(toName, k -> new ArrayList<>()).add(fromName);
                 }
-                // 2. 区域→区域依赖: from=zone_out(O)  to=required_zone(I)
+                // 2. 据点→判断器: from=point_signal(O)  to=target(I)
+                else if (hasOutputPort(fromNm, "point_signal") && hasInputPort(toNm, "target")) {
+                    decisionInputs.computeIfAbsent(toName, k -> new ArrayList<>()).add(fromName);
+                }
+                // 3. 判断器→区域: from=true_out/false_out(O)  to=point_in(I)
+                else if (hasInputPort(toNm, "point_in") && hasOutputPort(fromNm, "true_out")) {
+                    decisionOutputs.computeIfAbsent(fromName, k -> new LinkedHashMap<>())
+                            .computeIfAbsent("true_out", k -> new ArrayList<>()).add(toName);
+                }
+                else if (hasInputPort(toNm, "point_in") && hasOutputPort(fromNm, "false_out")) {
+                    decisionOutputs.computeIfAbsent(fromName, k -> new LinkedHashMap<>())
+                            .computeIfAbsent("false_out", k -> new ArrayList<>()).add(toName);
+                }
+                // 4. 区域→区域依赖: from=zone_out(O)  to=required_zone(I)
                 else if (hasOutputPort(fromNm, "zone_out") && hasInputPort(toNm, "required_zone")) {
                     wireBasedRequiredZone.put(toName, fromName);
                 }
             }
         }
 
-        // 构建据点数据
+        // ---- Phase 3: 构建据点数据 ----
         var player = mc().player;
         BlockPos defaultPos = player != null ? player.blockPosition() : BlockPos.ZERO;
         for (var entry : pointModels.entrySet()) {
             String name = entry.getKey();
             var nm = entry.getValue();
-            // 从选项读取坐标（或使用默认）
             String posStr = getOptionString(nm, "position");
             BlockPos pos = defaultPos;
             if (!posStr.isEmpty()) {
@@ -305,14 +327,51 @@ public class CapturePointGraphScreen {
                     radius, color, showRange));
         }
 
-        // 构建区域数据 + 双向同步
-        //   规则③：区域已占领 → 所有子据点强制标记为已占领
-        //   规则②：据点状态变更 → 重新计算区域占领状态
+        // ---- Phase 4: 判断器条件路由 ----
+        // decisionRoutedPoints: zoneName → [pointName, ...] 通过判断器路由到区域的据点
+        var decisionRoutedPoints = new LinkedHashMap<String, List<String>>();
+
+        for (var decisionEntry : decisionModels.entrySet()) {
+            String decisionName = decisionEntry.getKey();
+            var nm = decisionEntry.getValue();
+
+            // 读取判断器条件配置
+            String condition = getOptionString(nm, "condition");
+            String targetTeam = getOptionString(nm, "target_team");
+
+            // 获取输入此判断器的据点列表
+            List<String> inputPoints = decisionInputs.get(decisionName);
+            if (inputPoints == null || inputPoints.isEmpty()) continue;
+
+            // 获取此判断器的输出映射
+            Map<String, List<String>> outputs = decisionOutputs.get(decisionName);
+            if (outputs == null || outputs.isEmpty()) continue;
+
+            // 对每个输入据点执行条件判断
+            for (String pointName : inputPoints) {
+                var pointEntry = newPoints.get(pointName);
+                if (pointEntry == null) continue;
+
+                // 评估条件
+                boolean conditionMet = evaluateCondition(condition, targetTeam, pointEntry);
+
+                // 根据结果选择输出端口
+                String outputPort = conditionMet ? "true_out" : "false_out";
+                List<String> targetZones = outputs.get(outputPort);
+                if (targetZones == null || targetZones.isEmpty()) continue;
+
+                // 将据点路由到所有连接到该输出端口的区域
+                for (String zoneName : targetZones) {
+                    decisionRoutedPoints.computeIfAbsent(zoneName, k -> new ArrayList<>()).add(pointName);
+                }
+            }
+        }
+
+        // ---- Phase 5: 构建区域数据 + 双向同步 ----
         for (var entry : zoneModels.entrySet()) {
             String name = entry.getKey();
             var nm = entry.getValue();
 
-            // 读取区域节点的 captured 值（用户在编辑模式中可能切换过）
             boolean zoneCaptured = getOptionBool(nm, "captured");
 
             // 依赖区域：优先从连线解析，回退到选项值
@@ -321,13 +380,23 @@ public class CapturePointGraphScreen {
                 reqZone = getOptionString(nm, "required_zone");
             }
 
-            // 据点列表：只从连线（wire）解析
-            List<String> cpList = wireBasedZonePoints.get(name);
-            if (cpList == null) {
-                cpList = new ArrayList<>();
+            // 合并据点：直连 + 判断器路由
+            var cpList = new ArrayList<String>();
+            var directPoints = wireBasedZonePoints.get(name);
+            if (directPoints != null) {
+                cpList.addAll(directPoints);
+            }
+            var routedPoints = decisionRoutedPoints.get(name);
+            if (routedPoints != null) {
+                // 避免重复
+                for (String rp : routedPoints) {
+                    if (!cpList.contains(rp)) {
+                        cpList.add(rp);
+                    }
+                }
             }
 
-            // 规则③：区域占领状态 → 强制同步到所有子据点（双向！true和false都传播）
+            // 规则③：区域占领状态 → 强制同步到所有子据点
             for (var cpName : cpList) {
                 var existing = newPoints.get(cpName);
                 if (existing != null) {
@@ -354,6 +423,40 @@ public class CapturePointGraphScreen {
         }
 
         return new AbstractMap.SimpleEntry<>(newPoints, newZones);
+    }
+
+    /**
+     * 评估判断器的条件是否满足。<br>
+     * <br>
+     * <b>支持的条件类型：</b>
+     * <ul>
+     *   <li>{@code captured} — 据点已被占领（captured == true）</li>
+     *   <li>{@code not_captured} — 据点未被占领（captured == false）</li>
+     *   <li>{@code owner_team} — 据点的 ownerTeam 匹配 target_team</li>
+     *   <li>{@code capturing} — 据点的 capturingTeam 匹配 target_team</li>
+     *   <li>{@code not_capturing} — 据点未被任何队伍占领中</li>
+     * </ul>
+     */
+    private static boolean evaluateCondition(String condition, String targetTeam,
+                                              CaptureManager.CapturePointEntry pointEntry) {
+        if (condition == null || condition.isEmpty()) condition = "captured";
+
+        return switch (condition) {
+            case "captured" -> pointEntry.captured();
+            case "not_captured" -> !pointEntry.captured();
+            case "owner_team" -> {
+                if (targetTeam == null || targetTeam.isEmpty()) yield false;
+                yield targetTeam.equals(pointEntry.ownerTeam());
+            }
+            case "capturing" -> {
+                if (targetTeam == null || targetTeam.isEmpty()) {
+                    yield pointEntry.capturingTeam() != null;
+                }
+                yield targetTeam.equals(pointEntry.capturingTeam());
+            }
+            case "not_capturing" -> pointEntry.capturingTeam() == null;
+            default -> false;
+        };
     }
 
     /**
@@ -618,6 +721,11 @@ public class CapturePointGraphScreen {
                             } else {
                                 nm.setTitle(Component.literal(name));
                             }
+                        } else if (hasInputPort(nm, "target")) {
+                            // 判断器节点：显示名称 + 条件类型
+                            String condition = getOptionString(nm, "condition");
+                            if (condition == null || condition.isEmpty()) condition = "captured";
+                            nm.setTitle(Component.literal(name + " [? " + condition + "]"));
                         } else if (hasOutputPort(nm, "zone_out") || hasInputPort(nm, "point_in")) {
                             // 区域节点：显示名称 + 占领状态 + 点数
                             var entry = zones.get(name);

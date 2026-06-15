@@ -18,7 +18,8 @@ public class CapturePointGraph extends Graph {
 
     private static final List<Class<? extends Node>> SUPPORT_NODES = List.of(
             CapturePointNode.class,
-            CaptureZoneNode.class
+            CaptureZoneNode.class,
+            CaptureDecisionNode.class
     );
 
     private static final List<TypeHandle> SUPPORT_TYPES = List.of(

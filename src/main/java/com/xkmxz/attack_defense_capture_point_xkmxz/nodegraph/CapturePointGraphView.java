@@ -164,6 +164,15 @@ public class CapturePointGraphView extends GraphView {
                     }
                 });
 
+        // 创建判断器
+        menu.leaf(
+                Component.translatable("gui.capture_point_graph.menu.create_decision").getString(),
+                () -> {
+                    if (level != null) {
+                        CapturePointGraphDialogs.openCreateDecisionDialog(level);
+                    }
+                });
+
         // 如果有选中的连线，添加\"删除连线\"操作（直接删除，无需确认对话框）
         boolean hasWireSelected = getSelected().stream().anyMatch(m -> m instanceof WireModel);
         if (hasWireSelected) {
@@ -183,7 +192,7 @@ public class CapturePointGraphView extends GraphView {
                             Component.translatable("gui.capture_point_graph.menu.edit_properties").getString(),
                             () -> {
                                 if (level != null) {
-                                    CapturePointGraphDialogs.openEditPropertiesDialog(level, nodeName, isPointModel(model));
+                                    CapturePointGraphDialogs.openEditPropertiesDialog(level, nodeName, getNodeType(model));
                                 }
                             });
                     break;
@@ -198,8 +207,8 @@ public class CapturePointGraphView extends GraphView {
                             // 逐个处理选中的节点
                             for (var model : selectedModels) {
                                 String name = model.getName();
-                                boolean isZone = isZoneModel(model);
-                                CapturePointGraphDialogs.openDeleteConfirmDialog(level, name, isZone);
+                                String nodeType = getNodeType(model);
+                                CapturePointGraphDialogs.openDeleteConfirmDialog(level, name, nodeType);
                                 // 注意：只处理第一个选中项，避免多个弹窗
                                 break;
                             }
@@ -261,9 +270,6 @@ public class CapturePointGraphView extends GraphView {
 
     /**
      * 判断节点模型是否为区域节点（通过检查是否有 "required_zone" 选项）。
-     * 据点节点选项：captured / owner / position
-     * 区域节点选项：captured / required_zone / points
-     * "required_zone" 仅为区域节点独有。
      */
     private boolean isZoneModel(AbstractNodeModel model) {
         if (model instanceof INodeWithOptions opts) {
@@ -273,12 +279,32 @@ public class CapturePointGraphView extends GraphView {
     }
 
     /**
-     * 判断节点模型是否为据点节点（通过检查是否有 "owner" 选项）。
+     * 判断节点模型是否为据点节点（通过检查是否有 "owner_team" 选项）。
      */
     private boolean isPointModel(AbstractNodeModel model) {
         if (model instanceof INodeWithOptions opts) {
-            return opts.getNodeOptionById("owner") != null;
+            return opts.getNodeOptionById("owner_team") != null;
         }
         return false;
+    }
+
+    /**
+     * 判断节点模型是否为判断器节点（通过检查是否有 "condition" 选项）。
+     */
+    private boolean isDecisionModel(AbstractNodeModel model) {
+        if (model instanceof INodeWithOptions opts) {
+            return opts.getNodeOptionById("condition") != null;
+        }
+        return false;
+    }
+
+    /**
+     * 获取节点类型字符串： "point" / "zone" / "decision"。
+     */
+    private String getNodeType(AbstractNodeModel model) {
+        if (isZoneModel(model)) return "zone";
+        if (isPointModel(model)) return "point";
+        if (isDecisionModel(model)) return "decision";
+        return "unknown";
     }
 }

@@ -218,5 +218,25 @@
   "node.capture_point.option.show_range": "Show Range",
 
   "node.capture_zone.option.description": "Description",
-  "node.capture_zone.option.edit_points": "Member Points (comma separated)"
+  "node.capture_zone.option.edit_points": "Member Points (comma separated)",
+
+  "node.capture_decision.display_name": "Decision",
+  "node.capture_decision.port.target": "Target",
+  "node.capture_decision.port.true_out": "True",
+  "node.capture_decision.port.false_out": "False",
+  "node.capture_decision.option.condition": "Condition",
+  "node.capture_decision.option.target_team": "Target Team",
+  "node.capture_decision.option.progress_threshold": "Progress Threshold",
+
+  "gui.capture_point_graph.menu.create_decision": "Create Decision",
+  "gui.capture_point_graph.dialog.create_decision.title": "Create Decision Node",
+  "gui.capture_point_graph.dialog.create_decision.label": "Enter decision node name:",
+  "gui.capture_point_graph.dialog.create_decision.placeholder": "decision_name",
+  "gui.capture_point_graph.dialog.delete_decision.title": "Delete Decision Node",
+  "gui.capture_point_graph.dialog.delete_decision.message": "Delete decision node '%s'?",
+
+  "toast.capture_decision.create.success": "Created decision node '%s'",
+  "toast.capture_decision.create.empty": "Decision node name cannot be empty",
+  "toast.capture_decision.delete.success": "Deleted decision node '%s'",
+  "toast.capture_decision.edit_hint": "Decision node is configured via the Edit Mode panel"
 }
