@@ -197,17 +197,14 @@ public class CapturePointGraphView extends GraphView {
     }
 
     /**
-     * 将屏幕坐标转换为图空间坐标（考虑平移和缩放）。
+     * 将屏幕坐标转换为图空间坐标（通过 contentViewContainer 的 getLocalMouse 方法，
+     * 自动处理所有嵌套变换，包括平移和缩放）。
+     * 参考 synaxis CircuitGraphView.createMenu() 的实现方式。
      */
     private org.joml.Vector2f screenToGraphCoords(float screenX, float screenY) {
-        float offsetX = this.graphView.getOffsetX();
-        float offsetY = this.graphView.getOffsetY();
-        float scale = this.graphView.getScale();
-        if (scale <= 0) scale = 1f;
-        return new org.joml.Vector2f(
-                (screenX - offsetX) / scale,
-                (screenY - offsetY) / scale
-        );
+        // getContentViewContainer().getLocalMouse() 正确地将 GraphView 本地坐标
+        // 转换为内容容器本地坐标（图空间坐标），自动处理 offset/scale 变换
+        return getContentViewContainer().getLocalMouse(screenX, screenY);
     }
 
     // ---- 右键菜单 ----
