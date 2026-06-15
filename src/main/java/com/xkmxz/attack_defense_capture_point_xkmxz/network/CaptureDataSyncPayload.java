@@ -68,7 +68,8 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
         var pointMap = new HashMap<String, PointRenderData>();
         for (var entry : access.getPoints().values()) {
             pointMap.put(entry.name(), new PointRenderData(
-                    entry.pos(), entry.radius(), entry.displayColor(), entry.showRange(), entry.captured()));
+                    entry.pos(), entry.radius(), entry.displayColor(), entry.showRange(), entry.captured(),
+                    entry.ownerTeam(), entry.capturingTeam(), entry.captureProgress()));
         }
         var payload = new CaptureDataSyncPayload(pointMap);
         for (var player : level.players()) {
@@ -84,7 +85,8 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
         var pointMap = new HashMap<String, PointRenderData>();
         for (var entry : access.getPoints().values()) {
             pointMap.put(entry.name(), new PointRenderData(
-                    entry.pos(), entry.radius(), entry.displayColor(), entry.showRange(), entry.captured()));
+                    entry.pos(), entry.radius(), entry.displayColor(), entry.showRange(), entry.captured(),
+                    entry.ownerTeam(), entry.capturingTeam(), entry.captureProgress()));
         }
         PacketDistributor.sendToPlayer(player, new CaptureDataSyncPayload(pointMap));
     }
@@ -100,6 +102,9 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
     private static final String TAG_COLOR = "color";
     private static final String TAG_SHOW = "show";
     private static final String TAG_CAPTURED = "captured";
+    private static final String TAG_OWNER_TEAM = "ownerTeam";
+    private static final String TAG_CAPTURING_TEAM = "capturingTeam";
+    private static final String TAG_CAPTURE_PROGRESS = "captureProgress";
 
     private static CaptureDataSyncPayload fromTag(CompoundTag tag) {
         var points = new HashMap<String, PointRenderData>();
@@ -113,7 +118,10 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
                     entry.getDouble(TAG_RADIUS),
                     entry.getInt(TAG_COLOR),
                     entry.getBoolean(TAG_SHOW),
-                    entry.contains(TAG_CAPTURED) && entry.getBoolean(TAG_CAPTURED)
+                    entry.contains(TAG_CAPTURED) && entry.getBoolean(TAG_CAPTURED),
+                    entry.contains(TAG_OWNER_TEAM) ? entry.getString(TAG_OWNER_TEAM) : null,
+                    entry.contains(TAG_CAPTURING_TEAM) ? entry.getString(TAG_CAPTURING_TEAM) : null,
+                    entry.contains(TAG_CAPTURE_PROGRESS) ? entry.getInt(TAG_CAPTURE_PROGRESS) : 0
             ));
         }
         return new CaptureDataSyncPayload(points);
@@ -132,6 +140,9 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
             e.putInt(TAG_COLOR, entry.getValue().displayColor());
             e.putBoolean(TAG_SHOW, entry.getValue().showRange());
             e.putBoolean(TAG_CAPTURED, entry.getValue().captured());
+            if (entry.getValue().ownerTeam() != null) e.putString(TAG_OWNER_TEAM, entry.getValue().ownerTeam());
+            if (entry.getValue().capturingTeam() != null) e.putString(TAG_CAPTURING_TEAM, entry.getValue().capturingTeam());
+            e.putInt(TAG_CAPTURE_PROGRESS, entry.getValue().captureProgress());
             list.add(e);
         }
         tag.put(TAG_POINTS, list);
@@ -149,5 +160,8 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
 
     // ---- 数据记录 ----
 
-    public record PointRenderData(BlockPos pos, double radius, int displayColor, boolean showRange, boolean captured) {}
+    public record PointRenderData(BlockPos pos, double radius, int displayColor, boolean showRange, boolean captured,
+                                  @org.jetbrains.annotations.Nullable String ownerTeam,
+                                  @org.jetbrains.annotations.Nullable String capturingTeam,
+                                  int captureProgress) {}
 }

@@ -69,6 +69,15 @@ public interface ICaptureDataAccess {
     /** 设置据点占领状态（同步规则：会触发所属区域的占领状态重新计算） */
     void setPointCaptured(String name, boolean captured);
 
+    /** 设置据点的占领队伍（ownerTeam）。如果队伍不为 null，自动标记为已占领。 */
+    void setPointOwnerTeam(String name, @Nullable String team);
+
+    /** 设置据点正在占领的队伍（capturingTeam）。null 表示无队伍正在占领。 */
+    void setPointCapturingTeam(String name, @Nullable String team);
+
+    /** 设置据点的占领进度（0-100）。达到 100 时自动完成占领。 */
+    void setPointCaptureProgress(String name, int progress);
+
     /** 设置据点半径 */
     void setPointRadius(String name, double radius);
 

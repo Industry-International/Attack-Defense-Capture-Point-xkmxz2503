@@ -52,6 +52,21 @@ public class ServerCaptureDataAccess implements ICaptureDataAccess {
     }
 
     @Override
+    public void setPointOwnerTeam(String name, @Nullable String team) {
+        manager.setPointOwnerTeam(name, team);
+    }
+
+    @Override
+    public void setPointCapturingTeam(String name, @Nullable String team) {
+        manager.setPointCapturingTeam(name, team);
+    }
+
+    @Override
+    public void setPointCaptureProgress(String name, int progress) {
+        manager.setPointCaptureProgress(name, progress);
+    }
+
+    @Override
     public void setPointRadius(String name, double radius) {
         manager.setPointRadius(name, radius);
     }

@@ -4,10 +4,13 @@ import com.xkmxz.attack_defense_capture_point_xkmxz.block.CapturePointBlock;
 import com.xkmxz.attack_defense_capture_point_xkmxz.block.entity.CapturePointBlockEntity;
 import com.xkmxz.attack_defense_capture_point_xkmxz.command.ModCommands;
 import com.xkmxz.attack_defense_capture_point_xkmxz.gui.CapturePointManagerItem;
+import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
+import com.xkmxz.attack_defense_capture_point_xkmxz.manager.ICaptureDataAccess;
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.BlockEntityActionPayload;
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.CaptureDataSyncPayload;
 import com.xkmxz.attack_defense_capture_point_xkmxz.render.CapturePointBlockEntityRenderer;
 import com.xkmxz.attack_defense_capture_point_xkmxz.render.CapturePointWorldRenderer;
+import com.xkmxz.attack_defense_capture_point_xkmxz.render.CaptureProgressOverlay;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -138,18 +141,81 @@ public class Attack_defense_capture_point_xkmxz {
 
     public static class ServerTickHandler {
         private static int tickCounter = 0;
-        private static final int SYNC_INTERVAL = 40; // 每 40 tick (~2秒) 同步一次
+        private static final int SYNC_INTERVAL = 40;
 
         @SubscribeEvent
         public static void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
             tickCounter++;
-            if (tickCounter % SYNC_INTERVAL != 0) return;
-
             var server = event.getServer();
-            for (var level : server.getAllLevels()) {
-                if (level instanceof net.minecraft.server.level.ServerLevel sl) {
-                    CapturePointBlockEntity.syncAllBoundBlocks(sl);
+
+            // 每 10 tick (~0.5秒) 处理占领逻辑
+            if (tickCounter % 10 == 0) {
+                for (var level : server.getAllLevels()) {
+                    if (level instanceof net.minecraft.server.level.ServerLevel sl) {
+                        processCaptureLogic(sl);
+                    }
                 }
+            }
+
+            // 每 40 tick (~2秒) 同步客户端缓存
+            if (tickCounter % SYNC_INTERVAL == 0) {
+                for (var level : server.getAllLevels()) {
+                    if (level instanceof net.minecraft.server.level.ServerLevel sl) {
+                        CapturePointBlockEntity.syncAllBoundBlocks(sl);
+                    }
+                }
+            }
+        }
+
+        private static void processCaptureLogic(net.minecraft.server.level.ServerLevel level) {
+            var access = ICaptureDataAccess.server(level);
+            for (var entry : access.getPoints().values()) {
+                if (!entry.showRange()) continue;
+                var pos = entry.pos();
+                double radiusSq = entry.radius() * entry.radius();
+
+                var nearbyPlayers = level.players().stream()
+                        .filter(p -> p.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= radiusSq)
+                        .toList();
+
+                if (nearbyPlayers.isEmpty()) {
+                    if (entry.capturingTeam() != null) {
+                        access.setPointCapturingTeam(entry.name(), null);
+                    }
+                    continue;
+                }
+
+                // 统计各队伍人数
+                var teamCount = new java.util.HashMap<String, Integer>();
+                for (var p : nearbyPlayers) {
+                    String t = p.getTeam() != null ? p.getTeam().getName() : "__no_team__";
+                    teamCount.merge(t, 1, Integer::sum);
+                }
+
+                // 排除无队伍的玩家
+                teamCount.remove("__no_team__");
+                if (teamCount.isEmpty()) continue;
+
+                // 取人数最多的队伍
+                var maxEntry = teamCount.entrySet().stream()
+                        .max(java.util.Comparator.comparingInt(java.util.Map.Entry::getValue))
+                        .get();
+                String dominantTeam = maxEntry.getKey();
+
+                // 如果已被此队伍占领，保持满进度
+                if (java.util.Objects.equals(entry.ownerTeam(), dominantTeam)) {
+                    if (entry.captureProgress() < CaptureManager.CapturePointEntry.MAX_PROGRESS) {
+                        access.setPointCaptureProgress(entry.name(), CaptureManager.CapturePointEntry.MAX_PROGRESS);
+                    }
+                    continue;
+                }
+
+                // 推进占领进度 (每次 +2，约 5 秒占领完毕)
+                int newProgress = entry.captureProgress() + 2;
+                if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
+                    access.setPointCapturingTeam(entry.name(), dominantTeam);
+                }
+                access.setPointCaptureProgress(entry.name(), newProgress);
             }
         }
     }
@@ -158,10 +224,9 @@ public class Attack_defense_capture_point_xkmxz {
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            // 注册据点方块实体渲染器（仅渲染方块模型本身）
             BlockEntityRenderers.register(CAPTURE_POINT_BE.get(), CapturePointBlockEntityRenderer::new);
-            // 注册世界级据点区域渲染器（在据点实际中心坐标画范围圆环）
             NeoForge.EVENT_BUS.register(CapturePointWorldRenderer.class);
+            NeoForge.EVENT_BUS.register(CaptureProgressOverlay.class);
         }
     }
 }

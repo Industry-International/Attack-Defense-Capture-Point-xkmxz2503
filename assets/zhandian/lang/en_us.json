@@ -1,0 +1,14 @@
+{
+  "item.zhandian.zhan_dian_spawn_egg": "占点方块 Spawn Egg",
+  "entity.zhandian.zhan_dian": "占点方块",
+  "item.zhandian.zhan_dian_tool": "占点工具",
+  "item.zhandian.zhan_dian_tool.description_1": "左键取消占点方块",
+  "item.zhandian.zhan_dian_tool.description_0": "右键即可将方块设置为占点方块(改为指令设置)",
+  "item.zhandian.zhan_dian_tool.description_2": "手持时将显示占点方块位置",
+  "effect.zhandian.zhan_ling_buff": "占领",
+  "item.zhandian.zhan_dian_tool.description_3": "输入 /zhandian help 了解更多",
+  "item.zhandian.test_item": "测试",
+  "gui.zhandian.zhan_dian_name_set_gui.button_set": "设置",
+  "gui.zhandian.zhan_dian_name_set_gui.ZhanDianName": "输入小占点名称",
+  "item.zhandian.test_item.description_0": "清空占点"
+}

@@ -29,9 +29,14 @@ public class CaptureManager extends SavedData {
     // ---- Data Records ----
 
     public record CapturePointEntry(String name, BlockPos pos, boolean captured,
+                                    @Nullable String ownerTeam,
+                                    @Nullable String capturingTeam,
+                                    int captureProgress,
                                     double radius, int displayColor, boolean showRange) {
         public static final double DEFAULT_RADIUS = 5.0;
         public static final int DEFAULT_COLOR = 0xFFFF4444;
+        /** 占领进度最大值 (0-100) */
+        public static final int MAX_PROGRESS = 100;
 
         public CompoundTag toNbt() {
             var tag = new CompoundTag();
@@ -40,6 +45,9 @@ public class CaptureManager extends SavedData {
             tag.putInt("y", pos.getY());
             tag.putInt("z", pos.getZ());
             tag.putBoolean("captured", captured);
+            if (ownerTeam != null) tag.putString("ownerTeam", ownerTeam);
+            if (capturingTeam != null) tag.putString("capturingTeam", capturingTeam);
+            if (captureProgress > 0) tag.putInt("captureProgress", captureProgress);
             tag.putDouble("radius", radius);
             tag.putInt("displayColor", displayColor);
             tag.putBoolean("showRange", showRange);
@@ -50,26 +58,41 @@ public class CaptureManager extends SavedData {
             var name = tag.getString("name");
             var pos = new BlockPos(tag.getInt("x"), tag.getInt("y"), tag.getInt("z"));
             var captured = tag.contains("captured") && tag.getBoolean("captured");
+            var ownerTeam = tag.contains("ownerTeam") ? tag.getString("ownerTeam") : null;
+            var capturingTeam = tag.contains("capturingTeam") ? tag.getString("capturingTeam") : null;
+            var captureProgress = tag.contains("captureProgress") ? tag.getInt("captureProgress") : 0;
             var radius = tag.contains("radius") ? tag.getDouble("radius") : DEFAULT_RADIUS;
             var displayColor = tag.contains("displayColor") ? tag.getInt("displayColor") : DEFAULT_COLOR;
             var showRange = tag.contains("showRange") && tag.getBoolean("showRange");
-            return new CapturePointEntry(name, pos, captured, radius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, radius, displayColor, showRange);
         }
 
         public CapturePointEntry withCaptured(boolean newCaptured) {
-            return new CapturePointEntry(name, pos, newCaptured, radius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, newCaptured, newCaptured ? ownerTeam : null, newCaptured ? capturingTeam : null, newCaptured ? MAX_PROGRESS : 0, radius, displayColor, showRange);
+        }
+
+        public CapturePointEntry withOwnerTeam(@Nullable String newOwnerTeam) {
+            return new CapturePointEntry(name, pos, newOwnerTeam != null, newOwnerTeam, capturingTeam, captureProgress, radius, displayColor, showRange);
+        }
+
+        public CapturePointEntry withCapturingTeam(@Nullable String newCapturingTeam) {
+            return new CapturePointEntry(name, pos, captured, ownerTeam, newCapturingTeam, captureProgress, radius, displayColor, showRange);
+        }
+
+        public CapturePointEntry withCaptureProgress(int newProgress) {
+            return new CapturePointEntry(name, pos, newProgress >= MAX_PROGRESS, newProgress >= MAX_PROGRESS ? (ownerTeam != null ? ownerTeam : capturingTeam) : ownerTeam, capturingTeam, Math.min(newProgress, MAX_PROGRESS), radius, displayColor, showRange);
         }
 
         public CapturePointEntry withRadius(double newRadius) {
-            return new CapturePointEntry(name, pos, captured, newRadius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, newRadius, displayColor, showRange);
         }
 
         public CapturePointEntry withDisplayColor(int newColor) {
-            return new CapturePointEntry(name, pos, captured, radius, newColor, showRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, radius, newColor, showRange);
         }
 
         public CapturePointEntry withShowRange(boolean newShowRange) {
-            return new CapturePointEntry(name, pos, captured, radius, displayColor, newShowRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, radius, displayColor, newShowRange);
         }
     }
 
@@ -171,12 +194,14 @@ public class CaptureManager extends SavedData {
 
     public void addOrUpdatePoint(String name, BlockPos pos) {
         points.put(name, new CapturePointEntry(name, pos, false,
+                null, null, 0,
                 CapturePointEntry.DEFAULT_RADIUS, CapturePointEntry.DEFAULT_COLOR, false));
         bumpVersion();
     }
 
     public void addOrUpdatePointWithRadius(String name, BlockPos pos, double radius) {
         points.put(name, new CapturePointEntry(name, pos, false,
+                null, null, 0,
                 radius, CapturePointEntry.DEFAULT_COLOR, false));
         bumpVersion();
     }
@@ -191,6 +216,36 @@ public class CaptureManager extends SavedData {
         if (existing != null) {
             points.put(name, existing.withCaptured(captured));
             // 重新计算所属区域的占领状态（双向同步规则②）
+            recalcZoneCapturedForPoint(name);
+            bumpVersion();
+        }
+    }
+
+    /** 设置据点的占领队伍（ownerTeam）。如果队伍不为 null，自动标记为已占领。 */
+    public void setPointOwnerTeam(String name, @Nullable String team) {
+        var existing = points.get(name);
+        if (existing != null) {
+            points.put(name, existing.withOwnerTeam(team));
+            recalcZoneCapturedForPoint(name);
+            bumpVersion();
+        }
+    }
+
+    /** 设置据点正在占领的队伍（capturingTeam）。null 表示无队伍正在占领。 */
+    public void setPointCapturingTeam(String name, @Nullable String team) {
+        var existing = points.get(name);
+        if (existing != null) {
+            points.put(name, existing.withCapturingTeam(team));
+            bumpVersion();
+        }
+    }
+
+    /** 设置据点的占领进度（0-100）。达到 100 时自动完成占领。 */
+    public void setPointCaptureProgress(String name, int progress) {
+        var existing = points.get(name);
+        if (existing != null) {
+            int clamped = Math.max(0, Math.min(progress, CapturePointEntry.MAX_PROGRESS));
+            points.put(name, existing.withCaptureProgress(clamped));
             recalcZoneCapturedForPoint(name);
             bumpVersion();
         }

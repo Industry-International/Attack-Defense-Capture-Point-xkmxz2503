@@ -299,6 +299,7 @@ public class CapturePointGraphScreen {
             boolean captured = getOptionBool(nm, "captured");
             newPoints.put(name, new CaptureManager.CapturePointEntry(
                     name, pos, captured,
+                    null, null, 0,
                     radius, color, showRange));
         }
 
