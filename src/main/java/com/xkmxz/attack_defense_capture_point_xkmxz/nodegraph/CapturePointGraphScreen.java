@@ -241,6 +241,30 @@ public class CapturePointGraphScreen {
         return "true".equalsIgnoreCase(val) || "1".equals(val) || "yes".equalsIgnoreCase(val);
     }
 
+    private List<CaptureManager.GraphWireData> collectGraphWires() {
+        var wires = new ArrayList<CaptureManager.GraphWireData>();
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (!(element instanceof WireModel wire)) continue;
+            var fromPort = wire.getFromPort();
+            var toPort = wire.getToPort();
+            if (fromPort == null || toPort == null) continue;
+            if (!(fromPort.getNodeModel() instanceof NodeModel fromNm) || !(toPort.getNodeModel() instanceof NodeModel toNm)) continue;
+
+            String fromName = fromNm.getName();
+            String toName = toNm.getName();
+            String fromPortName = fromPort.getUniqueName();
+            String toPortName = toPort.getUniqueName();
+            if (fromName == null || toName == null || fromPortName == null || toPortName == null) continue;
+
+            // 结构关系已经由 points / zones 自身数据持久化，不重复存进 graphWires。
+            if ("point_signal".equals(fromPortName) && "point_in".equals(toPortName)) continue;
+            if ("zone_out".equals(fromPortName) && "required_zone".equals(toPortName)) continue;
+
+            wires.add(new CaptureManager.GraphWireData(fromName, fromPortName, toName, toPortName));
+        }
+        return wires;
+    }
+
     /**
      * 从节点图中构建完整数据快照。<br>
      * <br>
@@ -792,11 +816,30 @@ public class CapturePointGraphScreen {
             var layouts = new LinkedHashMap<String, CaptureManager.NodeLayout>();
             var decisions = new LinkedHashMap<String, CaptureManager.DecisionNodeData>();
             var nodeOpts = new LinkedHashMap<String, Map<String, String>>();
+            var wires = collectGraphWires();
             // 获取当前视角状态
             CaptureManager.ViewState currentViewState = null;
             try {
                 currentViewState = graphView.getCurrentViewState();
             } catch (Exception ignored) {}
+
+            for (var wire : mgr.getGraphWires()) {
+                var fromNode = findNodeModelByName(wire.fromNode());
+                var toNode = findNodeModelByName(wire.toNode());
+                if (fromNode == null || toNode == null) continue;
+
+                var fromPort = fromNode.getOutputsById().get(wire.fromPort());
+                var toPort = toNode.getInputsById().get(wire.toPort());
+                if (fromPort == null || toPort == null) continue;
+
+                try {
+                    graph.graphModel.createWire(fromPort, toPort);
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to restore logic wire {}.{} -> {}.{}: {}",
+                            wire.fromNode(), wire.fromPort(), wire.toNode(), wire.toPort(), e.getMessage());
+                }
+            }
+
             for (var element : graph.graphModel.getGraphElementModels()) {
                 if (element instanceof NodeModel nm) {
                     String name = nm.getName();
@@ -829,13 +872,13 @@ public class CapturePointGraphScreen {
                 long currentVersion = mgr.getVersion();
                 if (currentVersion != snapshotVersion) {
                     // 数据已被外部修改（命令/方块），弹出确认对话框
-                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions, nodeOpts, currentViewState);
+                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions, nodeOpts, wires, currentViewState);
                     return;
                 }
             }
 
             // 无冲突或非编辑模式：直接应用（含布局 + 判断器 + 节点选项 + 视角状态）
-            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, currentViewState);
+            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wires, currentViewState);
 
             // 立即同步所有已加载方块实体的渲染缓存
             var serverLevel = getServerLevel();
@@ -897,6 +940,7 @@ public class CapturePointGraphScreen {
                                      Map<String, CaptureManager.NodeLayout> layouts,
                                      Map<String, CaptureManager.DecisionNodeData> decisions,
                                      Map<String, Map<String, String>> nodeOpts,
+                                     List<CaptureManager.GraphWireData> wires,
                                      @Nullable CaptureManager.ViewState viewState) {
         var mc = mc();
         int dw = 340, dh = 130;
@@ -926,9 +970,9 @@ public class CapturePointGraphScreen {
         overwriteBtn.setOnClick(e -> {
             var overwriteMgr = getCaptureManager();
             if (overwriteMgr != null) {
-                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, viewState);
+                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wires, viewState);
             } else {
-                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, viewState);
+                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wires, viewState);
             }
 
             var sl = getServerLevel();
@@ -972,6 +1016,17 @@ public class CapturePointGraphScreen {
     /** 检查节点是否有指定名称的输入端口 */
     private static boolean hasInputPort(NodeModel nm, String portName) {
         return nm.getInputsById().containsKey(portName);
+    }
+
+    @Nullable
+    private NodeModel findNodeModelByName(String nodeName) {
+        if (nodeName == null || nodeName.isEmpty()) return null;
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof NodeModel nm && nodeName.equals(nm.getName())) {
+                return nm;
+            }
+        }
+        return null;
     }
 
     // ================================================================

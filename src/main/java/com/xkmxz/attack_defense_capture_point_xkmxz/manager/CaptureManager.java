@@ -28,6 +28,7 @@ public class CaptureManager extends SavedData {
     private final Map<String, DecisionNodeData> decisionNodes = new LinkedHashMap<>();
     /** 通用节点选项：nodeName → { optionId → optionValue } 用于持久化条件/逻辑门/动作/常量等节点配置 */
     private final Map<String, Map<String, String>> nodeOptions = new LinkedHashMap<>();
+    private final List<GraphWireData> graphWires = new ArrayList<>();
     /** 节点图视角状态（平移位置 + 缩放），null 表示使用默认视角（fit to children） */
     @Nullable
     private ViewState viewState = null;
@@ -261,6 +262,26 @@ public class CaptureManager extends SavedData {
         }
     }
 
+    public record GraphWireData(String fromNode, String fromPort, String toNode, String toPort) {
+        public CompoundTag toNbt() {
+            var tag = new CompoundTag();
+            tag.putString("fromNode", fromNode);
+            tag.putString("fromPort", fromPort);
+            tag.putString("toNode", toNode);
+            tag.putString("toPort", toPort);
+            return tag;
+        }
+
+        public static GraphWireData fromNbt(CompoundTag tag) {
+            return new GraphWireData(
+                    tag.getString("fromNode"),
+                    tag.getString("fromPort"),
+                    tag.getString("toNode"),
+                    tag.getString("toPort")
+            );
+        }
+    }
+
     public void setViewState(@Nullable ViewState viewState) {
         this.viewState = viewState;
         setDirty();
@@ -325,6 +346,7 @@ public class CaptureManager extends SavedData {
                                               Map<String, NodeLayout> layouts,
                                               Map<String, DecisionNodeData> decisions,
                                               Map<String, Map<String, String>> nodeOpts,
+                                              List<GraphWireData> wires,
                                               @Nullable ViewState viewState) {
         points.clear();
         zones.clear();
@@ -336,10 +358,12 @@ public class CaptureManager extends SavedData {
         decisionNodes.putAll(decisions);
         nodeOptions.clear();
         nodeOptions.putAll(nodeOpts);
+        graphWires.clear();
+        graphWires.addAll(wires);
         this.viewState = viewState;
         bumpVersion();
-        LOGGER.info("Applied graph snapshot: {} points, {} zones, {} layouts, {} decisions, {} nodeOptions (version {})",
-                points.size(), zones.size(), layouts.size(), decisions.size(), nodeOpts.size(), version);
+        LOGGER.info("Applied graph snapshot: {} points, {} zones, {} layouts, {} decisions, {} nodeOptions, {} wires (version {})",
+                points.size(), zones.size(), layouts.size(), decisions.size(), nodeOpts.size(), wires.size(), version);
     }
 
     // ---- Node Layout ----
@@ -367,6 +391,10 @@ public class CaptureManager extends SavedData {
     /** 获取所有通用节点选项的不可修改视图 */
     public Map<String, Map<String, String>> getNodeOptions() {
         return Collections.unmodifiableMap(nodeOptions);
+    }
+
+    public List<GraphWireData> getGraphWires() {
+        return Collections.unmodifiableList(graphWires);
     }
 
     public void addOrUpdatePoint(String name, BlockPos pos) {
@@ -600,19 +628,41 @@ public class CaptureManager extends SavedData {
     }
 
     public boolean canAccessZone(String zoneName) {
+        return canAccessZone(zoneName, new HashSet<>());
+    }
+
+    private boolean canAccessZone(String zoneName, Set<String> visiting) {
         var zone = zones.get(zoneName);
         if (zone == null) return false;
 
-        // 解锁依赖由逻辑组件（CaptureActionNode）在运行时通过 CaptureManager API 控制。
-        if (zone.unlockDependencies() != null && !zone.unlockDependencies().isEmpty()) {
-            for (var dep : zone.unlockDependencies()) {
-                if (!canAccessZone(dep)) return false;
-            }
-            return true; // 所有解锁依赖的区域都可访问
+        if (!visiting.add(zoneName)) {
+            LOGGER.warn("Detected zone dependency cycle while resolving access for '{}'", zoneName);
+            return false;
         }
 
-        // 无解锁依赖 → 区域无解锁约束，默认可访问
-        return true;
+        try {
+            if (zone.requiredZone() != null && !zone.requiredZone().isEmpty()) {
+                var required = zones.get(zone.requiredZone());
+                if (required == null || !required.captured()) {
+                    return false;
+                }
+            }
+
+            // 解锁依赖由逻辑组件（CaptureActionNode）在运行时通过 CaptureManager API 控制。
+            if (zone.unlockDependencies() != null && !zone.unlockDependencies().isEmpty()) {
+                for (var dep : zone.unlockDependencies()) {
+                    var depZone = zones.get(dep);
+                    if (depZone == null || !depZone.captured()) return false;
+                    if (!canAccessZone(dep, visiting)) return false;
+                }
+                return true; // 所有解锁依赖的区域都可访问
+            }
+
+            // 无解锁依赖 → 区域无解锁约束，默认可访问
+            return true;
+        } finally {
+            visiting.remove(zoneName);
+        }
     }
 
     // ---- Defender Team (攻防模式) ----
@@ -705,6 +755,14 @@ public class CaptureManager extends SavedData {
         }
 
         // 保存视角状态
+        if (!graphWires.isEmpty()) {
+            var wireList = new ListTag();
+            for (var wire : graphWires) {
+                wireList.add(wire.toNbt());
+            }
+            tag.put("graphWires", wireList);
+        }
+
         if (viewState != null) {
             tag.put("viewState", viewState.toNbt());
         }
@@ -718,6 +776,7 @@ public class CaptureManager extends SavedData {
         nodeLayouts.clear();
         decisionNodes.clear();
         nodeOptions.clear();
+        graphWires.clear();
         viewState = null;
         defenderTeam = null;
 
@@ -778,13 +837,20 @@ public class CaptureManager extends SavedData {
         }
 
         // 加载视角状态
+        if (tag.contains("graphWires", Tag.TAG_LIST)) {
+            var wireList = tag.getList("graphWires", Tag.TAG_COMPOUND);
+            for (int i = 0; i < wireList.size(); i++) {
+                graphWires.add(GraphWireData.fromNbt(wireList.getCompound(i)));
+            }
+        }
+
         if (tag.contains("viewState", Tag.TAG_COMPOUND)) {
             viewState = ViewState.fromNbt(tag.getCompound("viewState"));
         } else {
             viewState = null;
         }
 
-        LOGGER.info("Loaded {} points, {} zones, {} layouts, {} decisions, {} nodeOptions (version {}), defender={}",
-                points.size(), zones.size(), nodeLayouts.size(), decisionNodes.size(), nodeOptions.size(), version, defenderTeam);
+        LOGGER.info("Loaded {} points, {} zones, {} layouts, {} decisions, {} nodeOptions, {} wires (version {}), defender={}",
+                points.size(), zones.size(), nodeLayouts.size(), decisionNodes.size(), nodeOptions.size(), graphWires.size(), version, defenderTeam);
     }
 }

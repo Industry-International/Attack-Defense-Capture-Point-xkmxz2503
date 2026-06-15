@@ -8,6 +8,7 @@ import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
 import com.xkmxz.attack_defense_capture_point_xkmxz.manager.ICaptureDataAccess;
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.BlockEntityActionPayload;
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.CaptureDataSyncPayload;
+import com.xkmxz.attack_defense_capture_point_xkmxz.nodegraph.CaptureGraphRuntime;
 import com.xkmxz.attack_defense_capture_point_xkmxz.render.CapturePointBlockEntityRenderer;
 import com.xkmxz.attack_defense_capture_point_xkmxz.render.CapturePointWorldRenderer;
 import com.xkmxz.attack_defense_capture_point_xkmxz.render.CaptureProgressOverlay;
@@ -171,6 +172,7 @@ public class Attack_defense_capture_point_xkmxz {
 
         private static void processCaptureLogic(net.minecraft.server.level.ServerLevel level) {
             var access = ICaptureDataAccess.server(level);
+            var manager = CaptureManager.get(level);
             String defender = access.getDefenderTeam();
 
             for (var entry : access.getPoints().values()) {
@@ -336,6 +338,8 @@ public class Attack_defense_capture_point_xkmxz {
                     }
                 }
             }
+
+            CaptureGraphRuntime.tick(level, manager);
         }
     }
 

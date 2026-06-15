@@ -12,11 +12,11 @@
       "projectName": "Attack-Defense-Capture-Point-xkmxz2503",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\clientRunProgramArgs.txt"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\clientRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\clientRunVmArgs.txt",
-        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\clientRunVmArgs.txt",
+        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -34,11 +34,11 @@
       "projectName": "Attack-Defense-Capture-Point-xkmxz2503",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\dataRunProgramArgs.txt"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\dataRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\dataRunVmArgs.txt",
-        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\dataRunVmArgs.txt",
+        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -56,11 +56,11 @@
       "projectName": "Attack-Defense-Capture-Point-xkmxz2503",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\gameTestServerRunProgramArgs.txt"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\gameTestServerRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\gameTestServerRunVmArgs.txt",
-        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\gameTestServerRunVmArgs.txt",
+        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -78,11 +78,11 @@
       "projectName": "Attack-Defense-Capture-Point-xkmxz2503",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\serverRunProgramArgs.txt"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\serverRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\serverRunVmArgs.txt",
-        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\开发\\攻防战地图\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
+        "@D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\build\\moddev\\serverRunVmArgs.txt",
+        "-Dfml.modFolders\u003dattack_defense_capture_point_xkmxz%%D:\\000use\\mcjar\\AttackDef\\Attack-Defense-Capture-Point-xkmxz2503\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
