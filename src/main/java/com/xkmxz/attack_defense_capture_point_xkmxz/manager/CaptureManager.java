@@ -541,17 +541,17 @@ public class CaptureManager extends SavedData {
         var zone = zones.get(zoneName);
         if (zone == null) return false;
 
-        // 先检查解锁依赖（unlock_out → unlock_in 接口），优先级高于 requiredZone
+        // 解锁完全通过节点图的 unlock_out → unlock_in 链路管理，
+        // 不再回退到 requiredZone，移除据点自身携带的解锁机制
         if (zone.unlockDependencies() != null && !zone.unlockDependencies().isEmpty()) {
             for (var dep : zone.unlockDependencies()) {
                 if (!canAccessZone(dep)) return false;
             }
-            return true; // 所有解锁依赖的���域都可访问
+            return true; // 所有解锁依赖的区域都可访问
         }
 
-        // 无解锁依赖时回退到 requiredZone（zone_out → required_zone 依赖接口）
-        if (zone.requiredZone() == null || zone.requiredZone().isEmpty()) return true;
-        return isZoneCaptured(zone.requiredZone());
+        // 无解锁依赖 → 区域无解锁约束，默认可访问
+        return true;
     }
 
     // ---- Defender Team (攻防模式) ----
