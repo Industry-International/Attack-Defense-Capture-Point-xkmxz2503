@@ -966,7 +966,21 @@ public class CapturePointGraphScreen {
                             var port = opt.getPortModel();
                             if (port instanceof IFieldValueConfigurable cfg) {
                                 var val = cfg.getValue();
-                                optMap.put(optId, val != null ? val.toString() : "");
+                                String serialized;
+                                if (val == null) {
+                                    serialized = "";
+                                } else if (val instanceof CaptureConditionNode.PropertyType pt) {
+                                    serialized = pt.getSerializationId();
+                                } else if (val instanceof CaptureConditionNode.OperatorType ot) {
+                                    serialized = ot.getSerializationId();
+                                } else if (val instanceof LogicGateNode.GateType gt) {
+                                    serialized = gt.getSerializationId();
+                                } else if (val instanceof CaptureActionNode.ActionType at) {
+                                    serialized = at.getSerializationId();
+                                } else {
+                                    serialized = val.toString();
+                                }
+                                optMap.put(optId, serialized);
                             }
                         }
                     }
@@ -1408,6 +1422,11 @@ public class CapturePointGraphScreen {
             return Boolean.parseBoolean(optVal);
         }
 
+        // 字符串类型的选项ID（不进行数值转换，防止 Integer→String 类型冲突）
+        if (isStringOption(optId)) {
+            return optVal;
+        }
+
         // 尝试数值
         try {
             if (optVal.contains(".")) {
@@ -1418,6 +1437,17 @@ public class CapturePointGraphScreen {
 
         // 字符串（如 target_name, compare_value 等）
         return optVal;
+    }
+
+    /** 已知为字符串类型的选项 ID 列表 */
+    private static boolean isStringOption(String optId) {
+        return switch (optId) {
+            case "compare_value", "target_name", "action_value",
+                 "position", "owner_team", "required_zone",
+                 "points", "description", "edit_points",
+                 "zone_progress" -> true;
+            default -> false;
+        };
     }
 
     // ================================================================
