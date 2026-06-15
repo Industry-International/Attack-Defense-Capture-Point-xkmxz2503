@@ -91,6 +91,10 @@ public class CaptureProgressOverlay {
         ResourceLocation fgTexture;
         int progressWidth;
 
+        // 检测是否处于清除阶段（ownerTeam 存在但 captured=false，说明正在被清除）
+        boolean isNeutralizing = !captured && data.ownerTeam() != null && data.capturingTeam() != null
+                && !data.ownerTeam().equals(data.capturingTeam());
+
         if (captured && isPlayerTeam) {
             // 已被我方占领 → 绿色满条
             bgTexture = GREEN_BG;
@@ -103,13 +107,26 @@ public class CaptureProgressOverlay {
             fgTexture = RED;
             progressWidth = BAR_WIDTH;
             statusText = "✗ " + nearest.getKey() + " (敌方占领)";
-        } else if (data.capturingTeam() != null) {
-            // 正在被占领
+        } else if (isNeutralizing) {
+            // 正在被清除（进度从 100 下降到 0）
             boolean isOurTeam = player.getTeam() != null && player.getTeam().getName().equals(data.capturingTeam());
             if (isOurTeam) {
                 bgTexture = GREEN_BG;
                 fgTexture = GREEN;
-                statusText = "▶ " + nearest.getKey() + " (我方占领中 " + data.captureProgress() + "%)";
+                statusText = "⟳ " + nearest.getKey() + " (清除中 " + data.captureProgress() + "%)";
+            } else {
+                bgTexture = RED_BG;
+                fgTexture = RED;
+                statusText = "⟳ " + nearest.getKey() + " (敌方清除中 " + data.captureProgress() + "%)";
+            }
+            progressWidth = (int) ((double) data.captureProgress() / 100.0 * BAR_WIDTH);
+        } else if (data.capturingTeam() != null) {
+            // 正在被占领（进度从 0 上升到 100）
+            boolean isOurTeam = player.getTeam() != null && player.getTeam().getName().equals(data.capturingTeam());
+            if (isOurTeam) {
+                bgTexture = GREEN_BG;
+                fgTexture = GREEN;
+                statusText = "▶ " + nearest.getKey() + " (占领中 " + data.captureProgress() + "%)";
             } else {
                 bgTexture = RED_BG;
                 fgTexture = RED;

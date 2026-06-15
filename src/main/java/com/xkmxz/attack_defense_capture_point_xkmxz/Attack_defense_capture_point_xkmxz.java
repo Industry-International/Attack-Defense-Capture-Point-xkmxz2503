@@ -223,7 +223,23 @@ public class Attack_defense_capture_point_xkmxz {
                     continue;
                 }
 
-                // 推进占领进度 (每次 +2，约 5 秒占领完毕)
+                // 如果据点被其他队伍占领 → 先清除（进度从100减少到0）
+                if (entry.ownerTeam() != null) {
+                    int newProgress = entry.captureProgress() - 2;
+                    if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
+                        access.setPointCapturingTeam(entry.name(), dominantTeam);
+                    }
+                    if (newProgress <= 0) {
+                        // 清除完毕 → 变为中立
+                        access.setPointOwnerTeam(entry.name(), null);
+                        access.setPointCaptureProgress(entry.name(), 0);
+                    } else {
+                        access.setPointCaptureProgress(entry.name(), newProgress);
+                    }
+                    continue;
+                }
+
+                // 中立据点 → 推进占领进度（从0到100）
                 int newProgress = entry.captureProgress() + 2;
                 if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
                     access.setPointCapturingTeam(entry.name(), dominantTeam);
