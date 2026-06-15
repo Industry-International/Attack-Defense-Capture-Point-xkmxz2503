@@ -9,8 +9,10 @@ import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.GraphElementModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.INodeWithOptions;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.ICustomNodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.PortModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.wire.WireModel;
@@ -585,10 +587,10 @@ public class CapturePointGraphScreen {
                         layouts.put(name, new CaptureManager.NodeLayout(pos.x(), pos.y()));
                     }
                     // 判断器节点额外保存 options
-                    if (nm instanceof INodeWithOptions) {
-                        String nodeClassName = nm.getClass().getName();
-                        // 只捕获 CaptureDecisionNode 类型
-                        if (nodeClassName.contains("CaptureDecisionNode")) {
+                    // 注意：nm 是 CustomNodeModelImpl（或子类），需要用 ICustomNodeModel.getNode() 获取原始 Node
+                    if (nm instanceof ICustomNodeModel customNodeModel) {
+                        Node originalNode = customNodeModel.getNode();
+                        if (originalNode instanceof CaptureDecisionNode) {
                             String condition = readOptionString(nm, "condition");
                             String targetTeam = readOptionString(nm, "target_team");
                             int progress = readOptionInt(nm, "progress_threshold");
