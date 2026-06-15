@@ -78,6 +78,9 @@ public interface ICaptureDataAccess {
     /** 设置据点的占领进度（0-100）。达到 100 时自动完成占领。 */
     void setPointCaptureProgress(String name, int progress);
 
+    /** 设置据点的上一任占领者（用于自动恢复）。 */
+    void setPointLastOwnerTeam(String name, @Nullable String lastOwner);
+
     /** 设置据点半径 */
     void setPointRadius(String name, double radius);
 

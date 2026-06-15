@@ -34,11 +34,16 @@ public class CaptureManager extends SavedData {
                                     @Nullable String ownerTeam,
                                     @Nullable String capturingTeam,
                                     int captureProgress,
+                                    @Nullable String lastOwnerTeam,
                                     double radius, int displayColor, boolean showRange) {
         public static final double DEFAULT_RADIUS = 5.0;
         public static final int DEFAULT_COLOR = 0xFFFF4444;
         /** 占领进度最大值 (0-100) */
         public static final int MAX_PROGRESS = 100;
+        /** 自动恢复超时 tick 数 (30 秒) */
+        public static final int IDLE_TIMEOUT_TICKS = 600;
+        /** 自动恢复速度 (每 tick +1) */
+        public static final int RECOVERY_SPEED = 1;
 
         public CompoundTag toNbt() {
             var tag = new CompoundTag();
@@ -50,6 +55,7 @@ public class CaptureManager extends SavedData {
             if (ownerTeam != null) tag.putString("ownerTeam", ownerTeam);
             if (capturingTeam != null) tag.putString("capturingTeam", capturingTeam);
             if (captureProgress > 0) tag.putInt("captureProgress", captureProgress);
+            if (lastOwnerTeam != null) tag.putString("lastOwnerTeam", lastOwnerTeam);
             tag.putDouble("radius", radius);
             tag.putInt("displayColor", displayColor);
             tag.putBoolean("showRange", showRange);
@@ -63,38 +69,46 @@ public class CaptureManager extends SavedData {
             var ownerTeam = tag.contains("ownerTeam") ? tag.getString("ownerTeam") : null;
             var capturingTeam = tag.contains("capturingTeam") ? tag.getString("capturingTeam") : null;
             var captureProgress = tag.contains("captureProgress") ? tag.getInt("captureProgress") : 0;
+            var lastOwnerTeam = tag.contains("lastOwnerTeam") ? tag.getString("lastOwnerTeam") : null;
             var radius = tag.contains("radius") ? tag.getDouble("radius") : DEFAULT_RADIUS;
             var displayColor = tag.contains("displayColor") ? tag.getInt("displayColor") : DEFAULT_COLOR;
             var showRange = tag.contains("showRange") && tag.getBoolean("showRange");
-            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, radius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, lastOwnerTeam, radius, displayColor, showRange);
         }
 
         public CapturePointEntry withCaptured(boolean newCaptured) {
-            return new CapturePointEntry(name, pos, newCaptured, newCaptured ? ownerTeam : null, newCaptured ? capturingTeam : null, newCaptured ? MAX_PROGRESS : 0, radius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, newCaptured, newCaptured ? ownerTeam : null, newCaptured ? capturingTeam : null, newCaptured ? MAX_PROGRESS : 0, newCaptured ? null : lastOwnerTeam, radius, displayColor, showRange);
         }
 
         public CapturePointEntry withOwnerTeam(@Nullable String newOwnerTeam) {
-            return new CapturePointEntry(name, pos, newOwnerTeam != null, newOwnerTeam, capturingTeam, captureProgress, radius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, newOwnerTeam != null, newOwnerTeam, capturingTeam, captureProgress, lastOwnerTeam, radius, displayColor, showRange);
         }
 
         public CapturePointEntry withCapturingTeam(@Nullable String newCapturingTeam) {
-            return new CapturePointEntry(name, pos, captured, ownerTeam, newCapturingTeam, captureProgress, radius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, newCapturingTeam, captureProgress, lastOwnerTeam, radius, displayColor, showRange);
         }
 
         public CapturePointEntry withCaptureProgress(int newProgress) {
-            return new CapturePointEntry(name, pos, newProgress >= MAX_PROGRESS, newProgress >= MAX_PROGRESS ? (ownerTeam != null ? ownerTeam : capturingTeam) : ownerTeam, capturingTeam, Math.min(newProgress, MAX_PROGRESS), radius, displayColor, showRange);
+            boolean newCaptured = newProgress >= MAX_PROGRESS;
+            String newOwner = newCaptured ? (ownerTeam != null ? ownerTeam : capturingTeam) : ownerTeam;
+            String newLastOwner = (!newCaptured && ownerTeam != null && capturingTeam != null && !ownerTeam.equals(capturingTeam)) ? ownerTeam : lastOwnerTeam;
+            return new CapturePointEntry(name, pos, newCaptured, newOwner, capturingTeam, Math.min(newProgress, MAX_PROGRESS), newLastOwner, radius, displayColor, showRange);
+        }
+
+        public CapturePointEntry withLastOwnerTeam(@Nullable String newLastOwnerTeam) {
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, newLastOwnerTeam, radius, displayColor, showRange);
         }
 
         public CapturePointEntry withRadius(double newRadius) {
-            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, newRadius, displayColor, showRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, lastOwnerTeam, newRadius, displayColor, showRange);
         }
 
         public CapturePointEntry withDisplayColor(int newColor) {
-            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, radius, newColor, showRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, lastOwnerTeam, radius, newColor, showRange);
         }
 
         public CapturePointEntry withShowRange(boolean newShowRange) {
-            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, radius, displayColor, newShowRange);
+            return new CapturePointEntry(name, pos, captured, ownerTeam, capturingTeam, captureProgress, lastOwnerTeam, radius, displayColor, newShowRange);
         }
     }
 
@@ -196,14 +210,14 @@ public class CaptureManager extends SavedData {
 
     public void addOrUpdatePoint(String name, BlockPos pos) {
         points.put(name, new CapturePointEntry(name, pos, false,
-                null, null, 0,
+                null, null, 0, null,
                 CapturePointEntry.DEFAULT_RADIUS, CapturePointEntry.DEFAULT_COLOR, false));
         bumpVersion();
     }
 
     public void addOrUpdatePointWithRadius(String name, BlockPos pos, double radius) {
         points.put(name, new CapturePointEntry(name, pos, false,
-                null, null, 0,
+                null, null, 0, null,
                 radius, CapturePointEntry.DEFAULT_COLOR, false));
         bumpVersion();
     }
@@ -249,6 +263,15 @@ public class CaptureManager extends SavedData {
             int clamped = Math.max(0, Math.min(progress, CapturePointEntry.MAX_PROGRESS));
             points.put(name, existing.withCaptureProgress(clamped));
             recalcZoneCapturedForPoint(name);
+            bumpVersion();
+        }
+    }
+
+    /** 设置据点的上一任占领者（用于自动恢复）。 */
+    public void setPointLastOwnerTeam(String name, @Nullable String lastOwner) {
+        var existing = points.get(name);
+        if (existing != null) {
+            points.put(name, existing.withLastOwnerTeam(lastOwner));
             bumpVersion();
         }
     }

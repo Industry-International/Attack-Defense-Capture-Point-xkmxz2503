@@ -67,6 +67,11 @@ public class ServerCaptureDataAccess implements ICaptureDataAccess {
     }
 
     @Override
+    public void setPointLastOwnerTeam(String name, @Nullable String lastOwner) {
+        manager.setPointLastOwnerTeam(name, lastOwner);
+    }
+
+    @Override
     public void setPointRadius(String name, double radius) {
         manager.setPointRadius(name, radius);
     }

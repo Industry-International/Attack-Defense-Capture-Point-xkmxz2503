@@ -142,6 +142,8 @@ public class Attack_defense_capture_point_xkmxz {
     public static class ServerTickHandler {
         private static int tickCounter = 0;
         private static final int SYNC_INTERVAL = 40;
+        /** 每个据点的最后活动 tick（范围有玩家） */
+        private static final java.util.Map<String, Integer> LAST_ACTIVITY_TICK = new java.util.HashMap<>();
 
         @SubscribeEvent
         public static void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
@@ -170,81 +172,159 @@ public class Attack_defense_capture_point_xkmxz {
         private static void processCaptureLogic(net.minecraft.server.level.ServerLevel level) {
             var access = ICaptureDataAccess.server(level);
             String defender = access.getDefenderTeam();
+
             for (var entry : access.getPoints().values()) {
                 if (!entry.showRange()) continue;
                 var pos = entry.pos();
                 double radiusSq = entry.radius() * entry.radius();
+                String name = entry.name();
 
+                // ============================================================
+                // Phase 0: Zone Lock Enforcement
+                // ============================================================
+                String zoneName = access.findZoneForPoint(name);
+                boolean canAccess = zoneName == null || access.canAccessZone(zoneName);
+
+                if (zoneName != null && !canAccess) {
+                    // 区域被锁定 → 强制中立（无人占领、无进度、无占领中）
+                    if (entry.ownerTeam() != null || entry.captureProgress() > 0 || entry.capturingTeam() != null) {
+                        access.setPointOwnerTeam(name, null);
+                        access.setPointCapturingTeam(name, null);
+                        access.setPointCaptureProgress(name, 0);
+                    }
+                    continue;
+                }
+
+                if (zoneName != null && canAccess && entry.ownerTeam() == null
+                        && entry.captureProgress() == 0 && entry.capturingTeam() == null) {
+                    // 区域已解锁且无人占领 → 瞬间回收给防守方
+                    if (defender != null) {
+                        access.setPointOwnerTeam(name, defender);
+                        access.setPointCaptureProgress(name, CaptureManager.CapturePointEntry.MAX_PROGRESS);
+                    }
+                    continue;
+                }
+
+                // ============================================================
+                // Phase 1: Player Detection
+                // ============================================================
                 var nearbyPlayers = level.players().stream()
                         .filter(p -> p.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= radiusSq)
                         .toList();
 
-                if (nearbyPlayers.isEmpty()) {
-                    if (entry.capturingTeam() != null) {
-                        access.setPointCapturingTeam(entry.name(), null);
+                if (!nearbyPlayers.isEmpty()) {
+                    // ============================================================
+                    // Phase 2: Active Contest
+                    // ============================================================
+                    LAST_ACTIVITY_TICK.put(name, tickCounter);
+
+                    // 统计各队伍人数（防守方不计入进攻统计）
+                    var teamCount = new java.util.HashMap<String, Integer>();
+                    for (var p : nearbyPlayers) {
+                        String t = p.getTeam() != null ? p.getTeam().getName() : "__no_team__";
+                        if (defender != null && defender.equals(t)) continue;
+                        teamCount.merge(t, 1, Integer::sum);
                     }
-                    continue;
-                }
 
-                // 统计各队伍人数（防守方不计入）
-                var teamCount = new java.util.HashMap<String, Integer>();
-                for (var p : nearbyPlayers) {
-                    String t = p.getTeam() != null ? p.getTeam().getName() : "__no_team__";
-                    if (defender != null && defender.equals(t)) continue;
-                    teamCount.merge(t, 1, Integer::sum);
-                }
+                    // 排除无队伍玩家
+                    teamCount.remove("__no_team__");
+                    if (teamCount.isEmpty()) continue;
 
-                // 排除无队伍的玩家
-                teamCount.remove("__no_team__");
-                if (teamCount.isEmpty()) continue;
+                    // 取人数最多的队伍
+                    var maxEntry = teamCount.entrySet().stream()
+                            .max(java.util.Comparator.comparingInt(java.util.Map.Entry::getValue))
+                            .get();
+                    String dominantTeam = maxEntry.getKey();
 
-                // 取人数最多的队伍
-                var maxEntry = teamCount.entrySet().stream()
-                        .max(java.util.Comparator.comparingInt(java.util.Map.Entry::getValue))
-                        .get();
-                String dominantTeam = maxEntry.getKey();
+                    // 防守方模式下检查区域可达性（逐层占领）
+                    if (defender != null) {
+                        if (zoneName != null && !access.canAccessZone(zoneName)) {
+                            if (entry.capturingTeam() != null) {
+                                access.setPointCapturingTeam(name, null);
+                            }
+                            continue;
+                        }
+                    }
 
-                // 防守方模式下检查区域可达性（逐层占领）
-                if (defender != null) {
-                    String zoneName = access.findZoneForPoint(entry.name());
-                    if (zoneName != null && !access.canAccessZone(zoneName)) {
-                        if (entry.capturingTeam() != null) {
-                            access.setPointCapturingTeam(entry.name(), null);
+                    // 如果已被此队伍占领，保持满进度
+                    if (java.util.Objects.equals(entry.ownerTeam(), dominantTeam)) {
+                        if (entry.captureProgress() < CaptureManager.CapturePointEntry.MAX_PROGRESS) {
+                            access.setPointCaptureProgress(name, CaptureManager.CapturePointEntry.MAX_PROGRESS);
                         }
                         continue;
                     }
-                }
 
-                // 如果已被此队伍占领，保持满进度
-                if (java.util.Objects.equals(entry.ownerTeam(), dominantTeam)) {
-                    if (entry.captureProgress() < CaptureManager.CapturePointEntry.MAX_PROGRESS) {
-                        access.setPointCaptureProgress(entry.name(), CaptureManager.CapturePointEntry.MAX_PROGRESS);
+                    // 如果据点被其他队伍占领 → 先清除（进度从100减少到0）
+                    if (entry.ownerTeam() != null) {
+                        int newProgress = entry.captureProgress() - 2;
+                        if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
+                            access.setPointCapturingTeam(name, dominantTeam);
+                        }
+                        if (newProgress <= 0) {
+                            // 清除完毕 → 记录上一任占领者，变为中立
+                            String prevOwner = entry.ownerTeam();
+                            access.setPointLastOwnerTeam(name, prevOwner);
+                            access.setPointOwnerTeam(name, null);
+                            access.setPointCaptureProgress(name, 0);
+                        } else {
+                            access.setPointCaptureProgress(name, newProgress);
+                        }
+                        continue;
                     }
-                    continue;
-                }
 
-                // 如果据点被其他队伍占领 → 先清除（进度从100减少到0）
-                if (entry.ownerTeam() != null) {
-                    int newProgress = entry.captureProgress() - 2;
+                    // 中立据点 → 推进占领进度（从0到100）
+                    int newProgress = entry.captureProgress() + 2;
                     if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
-                        access.setPointCapturingTeam(entry.name(), dominantTeam);
+                        access.setPointCapturingTeam(name, dominantTeam);
                     }
-                    if (newProgress <= 0) {
-                        // 清除完毕 → 变为中立
-                        access.setPointOwnerTeam(entry.name(), null);
-                        access.setPointCaptureProgress(entry.name(), 0);
-                    } else {
-                        access.setPointCaptureProgress(entry.name(), newProgress);
-                    }
-                    continue;
-                }
+                    access.setPointCaptureProgress(name, newProgress);
 
-                // 中立据点 → 推进占领进度（从0到100）
-                int newProgress = entry.captureProgress() + 2;
-                if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
-                    access.setPointCapturingTeam(entry.name(), dominantTeam);
+                } else {
+                    // ============================================================
+                    // Phase 3: Idle → Auto-Recovery
+                    // ============================================================
+                    // 无玩家在范围 → 清除 capturingTeam
+                    if (entry.capturingTeam() != null) {
+                        access.setPointCapturingTeam(name, null);
+                        LAST_ACTIVITY_TICK.put(name, tickCounter); // 重置计时器
+                    }
+
+                    // 检查是否已超时
+                    Integer lastTick = LAST_ACTIVITY_TICK.get(name);
+                    if (lastTick == null) continue;
+                    if (tickCounter - lastTick < CaptureManager.CapturePointEntry.IDLE_TIMEOUT_TICKS) continue;
+
+                    // 超时 → 开始自动恢复
+
+                    // Case A: 有占领者 → 恢复进度到 100
+                    if (entry.ownerTeam() != null && entry.captureProgress() < CaptureManager.CapturePointEntry.MAX_PROGRESS) {
+                        int recovered = entry.captureProgress() + CaptureManager.CapturePointEntry.RECOVERY_SPEED;
+                        access.setPointCaptureProgress(name, recovered);
+                        continue;
+                    }
+
+                    // Case B: 中立但有上一任占领者 → 由上一任占领者回收
+                    if (entry.ownerTeam() == null && entry.lastOwnerTeam() != null) {
+                        String reclaimTeam = entry.lastOwnerTeam();
+                        access.setPointLastOwnerTeam(name, null);
+                        access.setPointOwnerTeam(name, reclaimTeam);
+                        access.setPointCaptureProgress(name, 1);
+                        continue;
+                    }
+
+                    // Case C: 中立无上一任占领者，但有防守方 → 防守方回收
+                    if (entry.ownerTeam() == null && defender != null) {
+                        access.setPointOwnerTeam(name, defender);
+                        access.setPointCaptureProgress(name, 1);
+                        continue;
+                    }
+
+                    // Case D: 中立无任何归属 → 进度归零
+                    if (entry.ownerTeam() == null && entry.captureProgress() > 0) {
+                        int recovered = entry.captureProgress() - CaptureManager.CapturePointEntry.RECOVERY_SPEED;
+                        access.setPointCaptureProgress(name, Math.max(0, recovered));
+                    }
                 }
-                access.setPointCaptureProgress(entry.name(), newProgress);
             }
         }
     }
