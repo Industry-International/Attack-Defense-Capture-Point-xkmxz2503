@@ -761,9 +761,10 @@ public class CapturePointGraphScreen {
             var newPoints = snapshot.getKey();
             var newZones = snapshot.getValue();
 
-            // 收集所有节点的布局信息 + 判断器节点数据
+            // 收集所有节点的布局信息 + 判断器节点数据 + 通用节点选项
             var layouts = new LinkedHashMap<String, CaptureManager.NodeLayout>();
             var decisions = new LinkedHashMap<String, CaptureManager.DecisionNodeData>();
+            var nodeOpts = new LinkedHashMap<String, Map<String, String>>();
             for (var element : graph.graphModel.getGraphElementModels()) {
                 if (element instanceof NodeModel nm) {
                     String name = nm.getName();
@@ -772,7 +773,22 @@ public class CapturePointGraphScreen {
                     if (pos != null) {
                         layouts.put(name, new CaptureManager.NodeLayout(pos.x(), pos.y()));
                     }
-                    // 判断器节点额外保存 options（旧版兼容，但已无 CaptureDecisionNode）
+                    // 收集此节点的所有选项值（条件/逻辑门/动作/常量等）
+                    var optMap = new LinkedHashMap<String, String>();
+                    if (nm instanceof com.lowdragmc.lowdraglib2.nodegraphtookit.model.INodeWithOptions opts) {
+                        for (var opt : nm.getNodeOptions()) {
+                            var optId = opt.getId();
+                            if (optId == null || optId.isEmpty()) continue;
+                            var port = opt.getPortModel();
+                            if (port instanceof IFieldValueConfigurable cfg) {
+                                var val = cfg.getValue();
+                                optMap.put(optId, val != null ? val.toString() : "");
+                            }
+                        }
+                    }
+                    if (!optMap.isEmpty()) {
+                        nodeOpts.put(name, optMap);
+                    }
                 }
             }
 
@@ -781,13 +797,13 @@ public class CapturePointGraphScreen {
                 long currentVersion = mgr.getVersion();
                 if (currentVersion != snapshotVersion) {
                     // 数据已被外部修改（命令/方块），弹出确认对话框
-                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions);
+                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions, nodeOpts);
                     return;
                 }
             }
 
-            // 无冲突或非编辑模式：直接应用（含布局 + 判断器）
-            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions);
+            // 无冲突或非编辑模式：直接应用（含布局 + 判断器 + 节点选项）
+            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts);
 
             // 立即同步所有已加载方块实体的渲染缓存
             var serverLevel = getServerLevel();
@@ -847,7 +863,8 @@ public class CapturePointGraphScreen {
                                      Map<String, CaptureManager.CapturePointEntry> newPoints,
                                      Map<String, CaptureManager.ZoneEntry> newZones,
                                      Map<String, CaptureManager.NodeLayout> layouts,
-                                     Map<String, CaptureManager.DecisionNodeData> decisions) {
+                                     Map<String, CaptureManager.DecisionNodeData> decisions,
+                                     Map<String, Map<String, String>> nodeOpts) {
         var mc = mc();
         int dw = 340, dh = 130;
 
@@ -876,9 +893,9 @@ public class CapturePointGraphScreen {
         overwriteBtn.setOnClick(e -> {
             var overwriteMgr = getCaptureManager();
             if (overwriteMgr != null) {
-                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions);
+                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts);
             } else {
-                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions);
+                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts);
             }
 
             var sl = getServerLevel();
@@ -939,6 +956,8 @@ public class CapturePointGraphScreen {
 
             // 获取保存的节点布局（如果有的话）
             var savedLayouts = mgr.getNodeLayouts();
+            // 获取保存的通用节点选项
+            var savedNodeOptions = mgr.getNodeOptions();
 
             var pointModels = new LinkedHashMap<String, NodeModel>();
             var zoneModels = new LinkedHashMap<String, NodeModel>();
@@ -976,6 +995,42 @@ public class CapturePointGraphScreen {
                 nodeModel.setTitle(Component.literal(entry.name()));
                 zoneModels.put(entry.name(), nodeModel);
                 zoneIdx++;
+            }
+
+            // 重建逻辑节点（条件/逻辑门/动作/常量）：从 nodeOptions 检测类型
+            var allKnownNames = new java.util.HashSet<String>();
+            allKnownNames.addAll(pointModels.keySet());
+            allKnownNames.addAll(zoneModels.keySet());
+            var logicNodeNames = new java.util.LinkedHashSet<String>();
+            logicNodeNames.addAll(savedLayouts.keySet());
+            logicNodeNames.addAll(savedNodeOptions.keySet());
+            logicNodeNames.removeAll(allKnownNames);
+
+            for (var name : logicNodeNames) {
+                if (name == null || name.isEmpty()) continue;
+                var saved = savedLayouts.get(name);
+                float x = saved != null ? saved.x() : 200;
+                float y = saved != null ? saved.y() : 200;
+                var opts = savedNodeOptions.get(name);
+
+                com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node logicNode = null;
+                if (opts != null) {
+                    if (opts.containsKey("condition_type")) {
+                        logicNode = new CaptureConditionNode();
+                    } else if (opts.containsKey("gate_type")) {
+                        logicNode = new LogicGateNode();
+                    } else if (opts.containsKey("action_type")) {
+                        logicNode = new CaptureActionNode();
+                    } else if (opts.containsKey("constant_value")) {
+                        logicNode = new ConstantNode();
+                    }
+                }
+                if (logicNode == null) continue;
+
+                var nm = graph.graphModel.createNodeModel(logicNode,
+                        new org.joml.Vector2f(x, y));
+                nm.setName(name);
+                nm.setTitle(Component.literal(name));
             }
 
             // 建立连线
@@ -1018,9 +1073,63 @@ public class CapturePointGraphScreen {
                 }
             }
 
+            // 恢复通用节点选项（条件/逻辑门/动作/常量的选项值）
+            for (var element : graph.graphModel.getGraphElementModels()) {
+                if (element instanceof NodeModel nm) {
+                    String name = nm.getName();
+                    if (name == null || name.isEmpty()) continue;
+                    var savedOpts = savedNodeOptions.get(name);
+                    if (savedOpts == null || savedOpts.isEmpty()) continue;
+                    for (var optEntry : savedOpts.entrySet()) {
+                        String optId = optEntry.getKey();
+                        String optVal = optEntry.getValue();
+                        if (optId == null || optVal == null) continue;
+                        Object typedVal = convertOptionValue(optId, optVal);
+                        if (typedVal != null) {
+                            setOptionValue(nm, optId, typedVal);
+                        }
+                    }
+                }
+            }
+
         } catch (Exception e) {
             LOGGER.warn("Failed to load data to graph: {}", e.getMessage());
         }
+    }
+
+    /**
+     * 将字符串选项值转换为正确的类型（枚举/布尔/数值），<br>
+     * 避免直接将字符串传给 IFieldValueConfigurable.setValue() 导致 ClassCastException。
+     */
+    @Nullable
+    private static Object convertOptionValue(String optId, String optVal) {
+        if (optVal == null) return null;
+
+        // 枚举类型：必须使用枚举实例，不能传字符串
+        switch (optId) {
+            case "condition_type":
+                return CaptureConditionNode.ConditionType.fromId(optVal);
+            case "gate_type":
+                return LogicGateNode.GateType.fromId(optVal);
+            case "action_type":
+                return CaptureActionNode.ActionType.fromId(optVal);
+        }
+
+        // 布尔值
+        if ("true".equalsIgnoreCase(optVal) || "false".equalsIgnoreCase(optVal)) {
+            return Boolean.parseBoolean(optVal);
+        }
+
+        // 尝试数值
+        try {
+            if (optVal.contains(".")) {
+                return Double.parseDouble(optVal);
+            }
+            return Integer.parseInt(optVal);
+        } catch (NumberFormatException ignored) {}
+
+        // 字符串（如 target_name, compare_value 等）
+        return optVal;
     }
 
     // ================================================================

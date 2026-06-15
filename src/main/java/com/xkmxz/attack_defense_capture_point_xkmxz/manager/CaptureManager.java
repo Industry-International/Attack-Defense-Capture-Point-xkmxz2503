@@ -26,7 +26,9 @@ public class CaptureManager extends SavedData {
     private final Map<String, ZoneEntry> zones = new LinkedHashMap<>();
     private final Map<String, NodeLayout> nodeLayouts = new LinkedHashMap<>();
     private final Map<String, DecisionNodeData> decisionNodes = new LinkedHashMap<>();
-    private long version = 0; // 数据版本号，每次写入递增，用于 GUI 检测外部修改
+    /** 通用节点选项：nodeName → { optionId → optionValue } 用于持久化条件/逻辑门/动作/常量等节点配置 */
+    private final Map<String, Map<String, String>> nodeOptions = new LinkedHashMap<>();
+    private long version = 0;
     @Nullable
     private String defenderTeam = null; // 默认防守方队伍，不为 null 时所有据点初始归此队伍
 
@@ -279,13 +281,13 @@ public class CaptureManager extends SavedData {
     }
 
     /**
-     * 批量应用 GUI 编辑器的完整数据快照 + 节点布局。
-     * 布局数据不触发版本号变更（不影响游戏逻辑）。
+     * 批量应用 GUI 编辑器的完整数据快照 + 节点布局 + 节点选项。
      */
     public void applyGraphSnapshotWithLayout(Map<String, CapturePointEntry> newPoints,
                                               Map<String, ZoneEntry> newZones,
                                               Map<String, NodeLayout> layouts,
-                                              Map<String, DecisionNodeData> decisions) {
+                                              Map<String, DecisionNodeData> decisions,
+                                              Map<String, Map<String, String>> nodeOpts) {
         points.clear();
         zones.clear();
         points.putAll(newPoints);
@@ -294,9 +296,11 @@ public class CaptureManager extends SavedData {
         nodeLayouts.putAll(layouts);
         decisionNodes.clear();
         decisionNodes.putAll(decisions);
+        nodeOptions.clear();
+        nodeOptions.putAll(nodeOpts);
         bumpVersion();
-        LOGGER.info("Applied graph snapshot: {} points, {} zones, {} layouts, {} decisions (version {})",
-                points.size(), zones.size(), layouts.size(), decisions.size(), version);
+        LOGGER.info("Applied graph snapshot: {} points, {} zones, {} layouts, {} decisions, {} nodeOptions (version {})",
+                points.size(), zones.size(), layouts.size(), decisions.size(), nodeOpts.size(), version);
     }
 
     // ---- Node Layout ----
@@ -319,6 +323,11 @@ public class CaptureManager extends SavedData {
     /** 获取所有判断器节点数据的不可修改视图 */
     public Map<String, DecisionNodeData> getDecisionNodes() {
         return Collections.unmodifiableMap(decisionNodes);
+    }
+
+    /** 获取所有通用节点选项的不可修改视图 */
+    public Map<String, Map<String, String>> getNodeOptions() {
+        return Collections.unmodifiableMap(nodeOptions);
     }
 
     public void addOrUpdatePoint(String name, BlockPos pos) {
@@ -637,6 +646,25 @@ public class CaptureManager extends SavedData {
             tag.put("decisionNodes", decList);
         }
 
+        // 保存通用节点选项
+        if (!nodeOptions.isEmpty()) {
+            var optsList = new ListTag();
+            for (var entry : nodeOptions.entrySet()) {
+                var optTag = new CompoundTag();
+                optTag.putString("name", entry.getKey());
+                var optMap = entry.getValue();
+                if (optMap != null && !optMap.isEmpty()) {
+                    var valuesTag = new CompoundTag();
+                    for (var optEntry : optMap.entrySet()) {
+                        valuesTag.putString(optEntry.getKey(), optEntry.getValue() != null ? optEntry.getValue() : "");
+                    }
+                    optTag.put("values", valuesTag);
+                }
+                optsList.add(optTag);
+            }
+            tag.put("nodeOptions", optsList);
+        }
+
         return tag;
     }
 
@@ -645,6 +673,7 @@ public class CaptureManager extends SavedData {
         zones.clear();
         nodeLayouts.clear();
         decisionNodes.clear();
+        nodeOptions.clear();
         defenderTeam = null;
 
         var pointsList = tag.getList("points", Tag.TAG_COMPOUND);
@@ -686,7 +715,24 @@ public class CaptureManager extends SavedData {
             }
         }
 
-        LOGGER.info("Loaded {} points, {} zones, {} layouts, {} decisions (version {}), defender={}",
-                points.size(), zones.size(), nodeLayouts.size(), decisionNodes.size(), version, defenderTeam);
+        // 加载通用节点选项
+        if (tag.contains("nodeOptions", Tag.TAG_LIST)) {
+            var optsList = tag.getList("nodeOptions", Tag.TAG_COMPOUND);
+            for (int i = 0; i < optsList.size(); i++) {
+                var optTag = optsList.getCompound(i);
+                var name = optTag.getString("name");
+                if (!name.isEmpty() && optTag.contains("values", Tag.TAG_COMPOUND)) {
+                    var valuesTag = optTag.getCompound("values");
+                    var optMap = new LinkedHashMap<String, String>();
+                    for (var key : valuesTag.getAllKeys()) {
+                        optMap.put(key, valuesTag.getString(key));
+                    }
+                    nodeOptions.put(name, optMap);
+                }
+            }
+        }
+
+        LOGGER.info("Loaded {} points, {} zones, {} layouts, {} decisions, {} nodeOptions (version {}), defender={}",
+                points.size(), zones.size(), nodeLayouts.size(), decisionNodes.size(), nodeOptions.size(), version, defenderTeam);
     }
 }
