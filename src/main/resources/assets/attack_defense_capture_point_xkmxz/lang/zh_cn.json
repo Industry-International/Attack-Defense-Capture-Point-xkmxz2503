@@ -233,7 +233,35 @@
   "node.capture_decision.option.target_team": "目标队伍",
   "node.capture_decision.option.progress_threshold": "进度阈值",
 
+  "node.capture_condition.display_name": "条件",
+  "node.capture_condition.port.point_target": "据点目标",
+  "node.capture_condition.port.zone_target": "区域目标",
+  "node.capture_condition.port.true_out": "真",
+  "node.capture_condition.port.false_out": "假",
+  "node.capture_condition.option.condition_type": "条件类型",
+  "node.capture_condition.option.compare_value": "比较值",
+
+  "node.logic_gate.display_name": "逻辑门",
+  "node.logic_gate.port.in_a": "输入A",
+  "node.logic_gate.port.in_b": "输入B",
+  "node.logic_gate.port.result": "结果",
+  "node.logic_gate.option.gate_type": "门类型",
+
+  "node.capture_action.display_name": "动作",
+  "node.capture_action.port.trigger": "触发",
+  "node.capture_action.option.action_type": "动作类型",
+  "node.capture_action.option.target_name": "目标名称",
+  "node.capture_action.option.action_value": "动作值",
+
+  "node.constant.display_name": "常量",
+  "node.constant.port.value": "值",
+  "node.constant.option.constant_value": "常量值",
+
   "gui.capture_point_graph.menu.create_decision": "创建判断器",
+  "gui.capture_point_graph.menu.create_condition": "创建条件",
+  "gui.capture_point_graph.menu.create_logic_gate": "创建逻辑门",
+  "gui.capture_point_graph.menu.create_action": "创建动作",
+  "gui.capture_point_graph.menu.create_constant": "创建常量",
   "gui.capture_point_graph.dialog.create_decision.title": "创建判断器节点",
   "gui.capture_point_graph.dialog.create_decision.label": "输入判断器名称：",
   "gui.capture_point_graph.dialog.create_decision.placeholder": "判断器名称",
@@ -249,5 +277,30 @@
   "condition.capture_decision.not_captured": "未占领",
   "condition.capture_decision.owner_team": "队伍匹配",
   "condition.capture_decision.capturing": "占领中",
-  "condition.capture_decision.not_capturing": "空闲"
+  "condition.capture_decision.not_capturing": "空闲",
+
+  "condition.capture_condition.point_captured": "据点已占领",
+  "condition.capture_condition.point_not_captured": "据点未占领",
+  "condition.capture_condition.point_owner_team": "据点队伍匹配",
+  "condition.capture_condition.point_not_owner_team": "据点队伍不匹配",
+  "condition.capture_condition.point_capturing_team": "据点占领队伍匹配",
+  "condition.capture_condition.point_progress_ge": "据点进度≥阈值",
+  "condition.capture_condition.zone_captured": "区域已占领",
+  "condition.capture_condition.zone_not_captured": "区域未占领",
+  "condition.capture_condition.zone_owner_team": "区域队伍匹配",
+  "condition.capture_condition.zone_accessible": "区域可访问",
+
+  "gate_type.logic_gate.and": "与",
+  "gate_type.logic_gate.or": "或",
+  "gate_type.logic_gate.not": "非",
+  "gate_type.logic_gate.xor": "异或",
+
+  "action_type.capture_action.set_captured": "设置占领",
+  "action_type.capture_action.set_owner_team": "设置占领队伍",
+  "action_type.capture_action.set_zone_captured": "设置区域占领",
+  "action_type.capture_action.notify": "通知",
+  "action_type.capture_action.add_to_zone": "加入区域",
+  "action_type.capture_action.remove_from_zone": "移出区域",
+
+  "toast.capture_node.create.success": "已创建节点 '%s'"
 }

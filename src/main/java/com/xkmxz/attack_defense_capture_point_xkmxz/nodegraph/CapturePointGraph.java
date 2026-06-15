@@ -19,13 +19,17 @@ public class CapturePointGraph extends Graph {
     private static final List<Class<? extends Node>> SUPPORT_NODES = List.of(
             CapturePointNode.class,
             CaptureZoneNode.class,
-            CaptureDecisionNode.class
+            CaptureConditionNode.class,
+            LogicGateNode.class,
+            CaptureActionNode.class,
+            ConstantNode.class
     );
 
     private static final List<TypeHandle> SUPPORT_TYPES = List.of(
             CapturePointTypes.POINT_SIGNAL,
             CapturePointTypes.ZONE_SIGNAL,
-            CapturePointTypes.UNLOCK_SIGNAL
+            CapturePointTypes.UNLOCK_SIGNAL,
+            CapturePointTypes.BOOLEAN_SIGNAL
     );
 
     @Override

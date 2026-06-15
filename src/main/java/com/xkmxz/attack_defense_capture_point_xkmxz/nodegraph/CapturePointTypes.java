@@ -19,5 +19,8 @@ public final class CapturePointTypes {
     /** 解锁信号 - 用于区域之间的解锁状态传递（独立于区域依赖接口） */
     public static final TypeHandle UNLOCK_SIGNAL = TypeHandle.create("capture:unlock_signal");
 
+    /** 布尔信号 - 条件节点/逻辑门节点之间传递布尔判断结果 */
+    public static final TypeHandle BOOLEAN_SIGNAL = TypeHandle.create("capture:boolean_signal");
+
     private CapturePointTypes() {}
 }

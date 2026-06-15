@@ -233,7 +233,35 @@
   "node.capture_decision.option.target_team": "Target Team",
   "node.capture_decision.option.progress_threshold": "Progress Threshold",
 
+  "node.capture_condition.display_name": "Condition",
+  "node.capture_condition.port.point_target": "Point Target",
+  "node.capture_condition.port.zone_target": "Zone Target",
+  "node.capture_condition.port.true_out": "True",
+  "node.capture_condition.port.false_out": "False",
+  "node.capture_condition.option.condition_type": "Condition Type",
+  "node.capture_condition.option.compare_value": "Compare Value",
+
+  "node.logic_gate.display_name": "Logic Gate",
+  "node.logic_gate.port.in_a": "Input A",
+  "node.logic_gate.port.in_b": "Input B",
+  "node.logic_gate.port.result": "Result",
+  "node.logic_gate.option.gate_type": "Gate Type",
+
+  "node.capture_action.display_name": "Action",
+  "node.capture_action.port.trigger": "Trigger",
+  "node.capture_action.option.action_type": "Action Type",
+  "node.capture_action.option.target_name": "Target Name",
+  "node.capture_action.option.action_value": "Action Value",
+
+  "node.constant.display_name": "Constant",
+  "node.constant.port.value": "Value",
+  "node.constant.option.constant_value": "Constant Value",
+
   "gui.capture_point_graph.menu.create_decision": "Create Decision",
+  "gui.capture_point_graph.menu.create_condition": "Create Condition",
+  "gui.capture_point_graph.menu.create_logic_gate": "Create Logic Gate",
+  "gui.capture_point_graph.menu.create_action": "Create Action",
+  "gui.capture_point_graph.menu.create_constant": "Create Constant",
   "gui.capture_point_graph.dialog.create_decision.title": "Create Decision Node",
   "gui.capture_point_graph.dialog.create_decision.label": "Enter decision node name:",
   "gui.capture_point_graph.dialog.create_decision.placeholder": "decision_name",
@@ -249,5 +277,30 @@
   "condition.capture_decision.not_captured": "Not Captured",
   "condition.capture_decision.owner_team": "Team Match",
   "condition.capture_decision.capturing": "Capturing",
-  "condition.capture_decision.not_capturing": "Idle"
+  "condition.capture_decision.not_capturing": "Idle",
+
+  "condition.capture_condition.point_captured": "Point Captured",
+  "condition.capture_condition.point_not_captured": "Point Not Captured",
+  "condition.capture_condition.point_owner_team": "Point Team Match",
+  "condition.capture_condition.point_not_owner_team": "Point Team Not Match",
+  "condition.capture_condition.point_capturing_team": "Point Capturing Match",
+  "condition.capture_condition.point_progress_ge": "Point Progress ≥",
+  "condition.capture_condition.zone_captured": "Zone Captured",
+  "condition.capture_condition.zone_not_captured": "Zone Not Captured",
+  "condition.capture_condition.zone_owner_team": "Zone Team Match",
+  "condition.capture_condition.zone_accessible": "Zone Accessible",
+
+  "gate_type.logic_gate.and": "AND",
+  "gate_type.logic_gate.or": "OR",
+  "gate_type.logic_gate.not": "NOT",
+  "gate_type.logic_gate.xor": "XOR",
+
+  "action_type.capture_action.set_captured": "Set Captured",
+  "action_type.capture_action.set_owner_team": "Set Owner Team",
+  "action_type.capture_action.set_zone_captured": "Set Zone Captured",
+  "action_type.capture_action.notify": "Notify",
+  "action_type.capture_action.add_to_zone": "Add to Zone",
+  "action_type.capture_action.remove_from_zone": "Remove from Zone",
+
+  "toast.capture_node.create.success": "Created node '%s'"
 }

@@ -164,25 +164,29 @@ public class CapturePointGraphView extends GraphView {
                     }
                 });
 
-        // 创建判断器 — 直接在图形中添加节点模型（判断器不存储在 CaptureManager 中）
+        // 创建条件节点
         menu.leaf(
-                Component.translatable("gui.capture_point_graph.menu.create_decision").getString(),
-                () -> {
-                    if (level != null && screen != null) {
-                        var node = new CaptureDecisionNode();
-                        // 在右键点击位置创建节点（使用屏幕坐标转换为图坐标）
-                        var nodeModel = screen.getGraph().graphModel.createNodeModel(node,
-                                new org.joml.Vector2f(screenX, screenY));
-                        String name = "decision_" + java.util.UUID.randomUUID().toString().substring(0, 6);
-                        nodeModel.setName(name);
-                        nodeModel.setTitle(Component.translatable("node.capture_decision.display_name"));
-                        // 提示用户
-                        ToastNotification.push(ToastNotification.Type.SUCCESS,
-                                Component.translatable("toast.capture_decision.create.success", name));
-                        ToastNotification.push(ToastNotification.Type.INFO,
-                                Component.translatable("toast.capture_decision.edit_hint"));
-                    }
-                });
+                Component.translatable("gui.capture_point_graph.menu.create_condition").getString(),
+                () -> createCustomNode(screenX, screenY, new CaptureConditionNode(),
+                        "condition_", "node.capture_condition.display_name"));
+
+        // 创建逻辑门节点
+        menu.leaf(
+                Component.translatable("gui.capture_point_graph.menu.create_logic_gate").getString(),
+                () -> createCustomNode(screenX, screenY, new LogicGateNode(),
+                        "gate_", "node.logic_gate.display_name"));
+
+        // 创建动作节点
+        menu.leaf(
+                Component.translatable("gui.capture_point_graph.menu.create_action").getString(),
+                () -> createCustomNode(screenX, screenY, new CaptureActionNode(),
+                        "action_", "node.capture_action.display_name"));
+
+        // 创建常量节点
+        menu.leaf(
+                Component.translatable("gui.capture_point_graph.menu.create_constant").getString(),
+                () -> createCustomNode(screenX, screenY, new ConstantNode(),
+                        "const_", "node.constant.display_name"));
 
         // 如果有选中的连线，添加\"删除连线\"操作（直接删除，无需确认对话框）
         boolean hasWireSelected = getSelected().stream().anyMatch(m -> m instanceof WireModel);
@@ -270,6 +274,23 @@ public class CapturePointGraphView extends GraphView {
     }
 
     /**
+     * 通用方法：在指定位置创建自定义节点模型。
+     */
+    private void createCustomNode(float screenX, float screenY,
+                                   com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node node,
+                                   String namePrefix, String langKey) {
+        if (level != null && screen != null) {
+            var nodeModel = screen.getGraph().graphModel.createNodeModel(node,
+                    new org.joml.Vector2f(screenX, screenY));
+            String name = namePrefix + java.util.UUID.randomUUID().toString().substring(0, 6);
+            nodeModel.setName(name);
+            nodeModel.setTitle(Component.translatable(langKey));
+            ToastNotification.push(ToastNotification.Type.SUCCESS,
+                    Component.translatable("toast.capture_node.create.success", name));
+        }
+    }
+
+    /**
      * 获取选中的节点模型列表（只包含 AbstractNodeModel）。
      */
     private List<AbstractNodeModel> getSelectedModels() {
@@ -300,22 +321,47 @@ public class CapturePointGraphView extends GraphView {
     }
 
     /**
-     * 判断节点模型是否为判断器节点（通过检查是否有 "condition" 选项）。
+     * 判断节点模型是否为条件节点（通过检查是否有 "condition_type" 选项）。
      */
-    private boolean isDecisionModel(AbstractNodeModel model) {
+    private boolean isConditionModel(AbstractNodeModel model) {
         if (model instanceof INodeWithOptions opts) {
-            return opts.getNodeOptionById("condition") != null;
+            return opts.getNodeOptionById("condition_type") != null;
         }
         return false;
     }
 
     /**
-     * 获取节点类型字符串： "point" / "zone" / "decision"。
+     * 判断节点模型是否为逻辑门节点（通过检查是否有 "gate_type" 选项）。
+     */
+    private boolean isGateModel(AbstractNodeModel model) {
+        if (model instanceof INodeWithOptions opts) {
+            return opts.getNodeOptionById("gate_type") != null;
+        }
+        return false;
+    }
+
+    /**
+     * 判断节点模型是否为动作节点（通过检查是否有 "action_type" 选项）。
+     */
+    private boolean isActionModel(AbstractNodeModel model) {
+        if (model instanceof INodeWithOptions opts) {
+            return opts.getNodeOptionById("action_type") != null;
+        }
+        return false;
+    }
+
+    /**
+     * 获取节点类型字符串： "point" / "zone" / "condition" / "gate" / "action" / "constant" / "decision"。
      */
     private String getNodeType(AbstractNodeModel model) {
         if (isZoneModel(model)) return "zone";
         if (isPointModel(model)) return "point";
-        if (isDecisionModel(model)) return "decision";
+        if (isConditionModel(model)) return "condition";
+        if (isGateModel(model)) return "gate";
+        if (isActionModel(model)) return "action";
+        // fallback for old-style decision node
+        if (model instanceof INodeWithOptions opts
+                && opts.getNodeOptionById("condition") != null) return "decision";
         return "unknown";
     }
 }

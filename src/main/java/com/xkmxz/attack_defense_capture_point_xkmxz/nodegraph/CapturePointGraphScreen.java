@@ -218,14 +218,14 @@ public class CapturePointGraphScreen {
      * 从节点图中构建完整数据快照。<br>
      * <br>
      * <b>处理流程：</b><br>
-     * 1. 收集所有节点（据点/区域/判断器）<br>
-     * 2. 解析连线：直连（point→zone）、判断器输入（point→decision）、<br>
-     *    判断器输出（decision→zone）、区域依赖（zone→zone）、<br>
-     *    区域→判断器（zone_out→zone_target）、判断器→区域依赖（zone_true_out/false_out→required_zone）<br>
+     * 1. 收集所有节点（据点/区域/条件/逻辑门/动作/常量）<br>
+     * 2. 解析连线：直连（point→zone）、条件输入（point→condition）、<br>
+     *    区域依赖（zone→zone）、解锁依赖（unlock_out→unlock_in）<br>
      * 3. 构建据点数据<br>
-     * 4. 据点判断器条件路由：根据条件将据点分配到 true_out 或 false_out<br>
-     * 5. 构建区域数据（直连据点 + 判断器路由据点）<br>
-     * 6. 区域判断器条件路由：根据条件将区域依赖（zone_out）分配到 zone_true_out 或 zone_false_out<br>
+     * 4. 条件链评估：利用 CaptureConditionNode + LogicGateNode 评估条件，<br>
+     *    替代旧的硬编码 CaptureDecisionNode 条件路由<br>
+     * 5. 构建区域数据（直连据点）<br>
+     * 6. 🔓 解锁信号条件路由：通过条件/逻辑门链路路由解锁信号<br>
      * 7. 双向同步规则
      */
     private Map.Entry<Map<String, CaptureManager.CapturePointEntry>, Map<String, CaptureManager.ZoneEntry>> buildSnapshotFromGraph() {
@@ -235,7 +235,11 @@ public class CapturePointGraphScreen {
         // ---- Phase 1: 收集所有节点 ----
         var pointModels = new HashMap<String, NodeModel>();
         var zoneModels = new HashMap<String, NodeModel>();
-        var decisionModels = new HashMap<String, NodeModel>();
+        var conditionModels = new HashMap<String, NodeModel>();
+        var gateModels = new HashMap<String, NodeModel>();
+        var actionModels = new HashMap<String, NodeModel>();
+        // 旧版判断器节点（兼容）
+        var oldDecisionModels = new HashMap<String, NodeModel>();
 
         for (var element : graph.graphModel.getGraphElementModels()) {
             if (element instanceof NodeModel nm) {
@@ -243,11 +247,20 @@ public class CapturePointGraphScreen {
                 if (name == null || name.isEmpty()) continue;
                 if (hasOutputPort(nm, "point_signal")) {
                     pointModels.put(name, nm);
-                } else if (hasInputPort(nm, "target")) {
-                    // 判断器节点：具有 target 输入端口
-                    decisionModels.put(name, nm);
+                } else if (hasInputPort(nm, "point_target") || hasInputPort(nm, "zone_target")) {
+                    // 新版条件节点
+                    conditionModels.put(name, nm);
+                } else if (hasInputPort(nm, "in_a")) {
+                    // 逻辑门节点
+                    gateModels.put(name, nm);
+                } else if (hasInputPort(nm, "trigger")) {
+                    // 动作节点
+                    actionModels.put(name, nm);
                 } else if (hasOutputPort(nm, "zone_out") || hasInputPort(nm, "point_in")) {
                     zoneModels.put(name, nm);
+                } else if (hasInputPort(nm, "target")) {
+                    // 旧版判断器节点（兼容）
+                    oldDecisionModels.put(name, nm);
                 }
             }
         }
@@ -355,42 +368,88 @@ public class CapturePointGraphScreen {
                     radius, color, showRange));
         }
 
-        // ---- Phase 4: 判断器条件路由 ----
-        // decisionRoutedPoints: zoneName → [pointName, ...] 通过判断器路由到区域的据点
-        var decisionRoutedPoints = new LinkedHashMap<String, List<String>>();
+        // ---- Phase 4: 条件链评估（替代旧硬编码 CaptureDecisionNode） ----
+        // conditionRoutedPoints: zoneName → [pointName, ...] 通过条件链路由到区域的据点
+        var conditionRoutedPoints = new LinkedHashMap<String, List<String>>();
 
-        for (var decisionEntry : decisionModels.entrySet()) {
-            String decisionName = decisionEntry.getKey();
-            var nm = decisionEntry.getValue();
+        // 4a. 评估条件节点：对每个连接了 point_target 的条件节点，评估其条件
+        // 并记录每个条件节点的每个输出端口指向的最终目标（zone 或 action）
+        var conditionResults = new LinkedHashMap<String, Boolean>(); // conditionNodeName → boolean result
+        var conditionInputPoints = new LinkedHashMap<String, List<String>>(); // conditionNodeName → [pointNames]
 
-            // 读取判断器条件配置
-            String condition = getOptionString(nm, "condition");
-            String targetTeam = getOptionString(nm, "target_team");
+        // 收集条件节点的输入据点
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
 
-            // 获取输入此判断器的据点列表
-            List<String> inputPoints = decisionInputs.get(decisionName);
+                // 据点的 point_signal → 条件节点的 point_target
+                if (hasOutputPort(fromNm, "point_signal") && hasInputPort(toNm, "point_target")) {
+                    conditionInputPoints.computeIfAbsent(toName, k -> new ArrayList<>()).add(fromName);
+                }
+            }
+        }
+
+        // 评估每个条件节点
+        for (var entry : conditionModels.entrySet()) {
+            String condName = entry.getKey();
+            var nm = entry.getValue();
+            String conditionTypeStr = getOptionString(nm, "condition_type");
+            String compareValue = getOptionString(nm, "compare_value");
+            var conditionType = CaptureConditionNode.ConditionType.fromId(conditionTypeStr);
+
+            List<String> inputPoints = conditionInputPoints.get(condName);
             if (inputPoints == null || inputPoints.isEmpty()) continue;
 
-            // 获取此判断器的输出映射
-            Map<String, List<String>> outputs = decisionOutputs.get(decisionName);
-            if (outputs == null || outputs.isEmpty()) continue;
-
-            // 对每个输入据点执行条件判断
             for (String pointName : inputPoints) {
                 var pointEntry = newPoints.get(pointName);
                 if (pointEntry == null) continue;
 
-                // 评估条件
-                boolean conditionMet = evaluateCondition(condition, targetTeam, pointEntry);
+                boolean result = evaluateNewCondition(conditionType, compareValue, pointEntry, null);
+                String outputPort = result ? "true_out" : "false_out";
 
-                // 根据结果选择输出端口
+                // 查找条件节点的输出连线 → 区域/动作/逻辑门
+                routeConditionOutput(condName, outputPort, pointName,
+                        conditionRoutedPoints, conditionModels, gateModels,
+                        zoneModels, newPoints, graph, conditionType, compareValue);
+            }
+        }
+
+        // 4b. 兼容旧版判断器节点（CaptureDecisionNode）
+        var oldDecisionRoutedPoints = new LinkedHashMap<String, List<String>>();
+
+        for (var decisionEntry : oldDecisionModels.entrySet()) {
+            String decisionName = decisionEntry.getKey();
+            var nm = decisionEntry.getValue();
+
+            String oldCondition = getOptionString(nm, "condition");
+            String targetTeam = getOptionString(nm, "target_team");
+
+            List<String> inputPoints = decisionInputs.get(decisionName);
+            if (inputPoints == null || inputPoints.isEmpty()) continue;
+
+            Map<String, List<String>> outputs = decisionOutputs.get(decisionName);
+            if (outputs == null || outputs.isEmpty()) continue;
+
+            for (String pointName : inputPoints) {
+                var pointEntry = newPoints.get(pointName);
+                if (pointEntry == null) continue;
+
+                boolean conditionMet = evaluateOldCondition(oldCondition, targetTeam, pointEntry);
+
                 String outputPort = conditionMet ? "true_out" : "false_out";
                 List<String> targetZones = outputs.get(outputPort);
                 if (targetZones == null || targetZones.isEmpty()) continue;
 
-                // 将据点路由到所有连接到该输出端口的区域
                 for (String zoneName : targetZones) {
-                    decisionRoutedPoints.computeIfAbsent(zoneName, k -> new ArrayList<>()).add(pointName);
+                    oldDecisionRoutedPoints.computeIfAbsent(zoneName, k -> new ArrayList<>()).add(pointName);
                 }
             }
         }
@@ -405,16 +464,24 @@ public class CapturePointGraphScreen {
             // 依赖区域：仅从连线（zone_out → required_zone）解析
             String reqZone = wireBasedRequiredZone.get(name);
 
-            // 合并据点：直连 + 判断器路由
+            // 合并据点：直连 + 条件路由 + 旧判断器路由
             var cpList = new ArrayList<String>();
             var directPoints = wireBasedZonePoints.get(name);
             if (directPoints != null) {
                 cpList.addAll(directPoints);
             }
-            var routedPoints = decisionRoutedPoints.get(name);
+            var routedPoints = conditionRoutedPoints.get(name);
             if (routedPoints != null) {
-                // 避免重复
                 for (String rp : routedPoints) {
+                    if (!cpList.contains(rp)) {
+                        cpList.add(rp);
+                    }
+                }
+            }
+            // 旧判断器路由（兼容）
+            var oldRouted = oldDecisionRoutedPoints.get(name);
+            if (oldRouted != null) {
+                for (String rp : oldRouted) {
                     if (!cpList.contains(rp)) {
                         cpList.add(rp);
                     }
@@ -437,11 +504,36 @@ public class CapturePointGraphScreen {
                     name, cpList, reqZone, zoneCaptured, null, unlockDepList));
         }
 
-        // ---- Phase 6: 🔓 解锁信号判断器条件路由 ----
-        // 评估判断器的条件并路由解锁信号（unlock_out → unlock_target → decision → unlock_true_out/false_out → unlock_in）
+        // ---- Phase 6: 🔓 解锁信号条件路由（新版条件节点 + 旧版判断器兼容）----
         var unlockDecisionRoutedDeps = new LinkedHashMap<String, List<String>>();
 
-        for (var decisionEntry : decisionModels.entrySet()) {
+        // 6a. 新版条件节点解锁路由（condition with zone_target）
+        for (var entry : conditionModels.entrySet()) {
+            String condName = entry.getKey();
+            var nm = entry.getValue();
+            String conditionTypeStr = getOptionString(nm, "condition_type");
+            String compareValue = getOptionString(nm, "compare_value");
+            var conditionType = CaptureConditionNode.ConditionType.fromId(conditionTypeStr);
+
+            // 获取连接到此条件节点的"解锁输入"区域
+            List<String> inputZones = unlockDecisionInputs.get(condName);
+            if (inputZones == null || inputZones.isEmpty()) continue;
+
+            for (String zoneName : inputZones) {
+                var zoneEntry = newZones.get(zoneName);
+                if (zoneEntry == null) continue;
+
+                boolean result = evaluateNewCondition(conditionType, compareValue, null, zoneEntry);
+                String outputPort = result ? "unlock_true_out" : "unlock_false_out";
+
+                // 查找条件节点的输出连线 → 下游区域
+                routeUnlockOutput(condName, outputPort, zoneName,
+                        unlockDecisionRoutedDeps, graph);
+            }
+        }
+
+        // 6b. 旧版判断器节点解锁路由（兼容）
+        for (var decisionEntry : oldDecisionModels.entrySet()) {
             String decisionName = decisionEntry.getKey();
             var nm = decisionEntry.getValue();
 
@@ -462,7 +554,7 @@ public class CapturePointGraphScreen {
                 if (zoneEntry == null) continue;
 
                 // 评估条件（基于区域的状态：captured / owner_team / not_captured）
-                boolean conditionMet = evaluateZoneCondition(condition, targetTeam, zoneEntry);
+                boolean conditionMet = evaluateOldZoneCondition(condition, targetTeam, zoneEntry);
 
                 // 根据结果选择输出端口
                 String outputPort = conditionMet ? "unlock_true_out" : "unlock_false_out";
@@ -511,19 +603,52 @@ public class CapturePointGraphScreen {
     }
 
     /**
-     * 评估判断器的条件是否满足。<br>
-     * <br>
-     * <b>支持的条件类型：</b>
-     * <ul>
-     *   <li>{@code captured} — 据点已被占领（captured == true）</li>
-     *   <li>{@code not_captured} — 据点未被占领（captured == false）</li>
-     *   <li>{@code owner_team} — 据点的 ownerTeam 匹配 target_team</li>
-     *   <li>{@code capturing} — 据点的 capturingTeam 匹配 target_team</li>
-     *   <li>{@code not_capturing} — 据点未被任何队伍占领中</li>
-     * </ul>
+     * 评估新版条件节点的条件是否满足。
+     * 使用 CaptureConditionNode.ConditionType 枚举，支持所有条件类型。
      */
-    private static boolean evaluateCondition(String condition, String targetTeam,
-                                              CaptureManager.CapturePointEntry pointEntry) {
+    private static boolean evaluateNewCondition(CaptureConditionNode.ConditionType conditionType,
+                                                  String compareValue,
+                                                  CaptureManager.CapturePointEntry pointEntry,
+                                                  CaptureManager.ZoneEntry zoneEntry) {
+        if (conditionType == null) return false;
+        String cv = compareValue != null ? compareValue : "";
+
+        return switch (conditionType) {
+            case POINT_CAPTURED -> pointEntry != null && pointEntry.captured();
+            case POINT_NOT_CAPTURED -> pointEntry != null && !pointEntry.captured();
+            case POINT_OWNER_TEAM -> {
+                if (pointEntry == null || cv.isEmpty()) yield false;
+                yield cv.equals(pointEntry.ownerTeam());
+            }
+            case POINT_NOT_OWNER_TEAM -> {
+                if (pointEntry == null || cv.isEmpty()) yield true;
+                yield !cv.equals(pointEntry.ownerTeam());
+            }
+            case POINT_CAPTURING_TEAM -> {
+                if (pointEntry == null || cv.isEmpty()) yield pointEntry.capturingTeam() != null;
+                yield cv.equals(pointEntry.capturingTeam());
+            }
+            case POINT_PROGRESS_GE -> {
+                if (pointEntry == null) yield false;
+                int threshold;
+                try { threshold = Integer.parseInt(cv); } catch (NumberFormatException e) { threshold = 50; }
+                yield pointEntry.captureProgress() >= threshold;
+            }
+            case ZONE_CAPTURED -> zoneEntry != null && zoneEntry.captured();
+            case ZONE_NOT_CAPTURED -> zoneEntry != null && !zoneEntry.captured();
+            case ZONE_OWNER_TEAM -> {
+                if (zoneEntry == null || cv.isEmpty()) yield false;
+                yield cv.equals(zoneEntry.ownerTeam());
+            }
+            case ZONE_ACCESSIBLE -> zoneEntry != null; // 简化：区域存在即可访问
+        };
+    }
+
+    /**
+     * 评估旧版 CaptureDecisionNode 的条件（兼容旧数据）。
+     */
+    private static boolean evaluateOldCondition(String condition, String targetTeam,
+                                                  CaptureManager.CapturePointEntry pointEntry) {
         if (condition == null || condition.isEmpty()) condition = "captured";
 
         return switch (condition) {
@@ -545,17 +670,219 @@ public class CapturePointGraphScreen {
     }
 
     /**
-     * 评估判断器对区域的条件是否满足。<br>
-     * <br>
-     * <b>支持的条件类型：</b>
-     * <ul>
-     *   <li>{@code captured} — 区域已被占领（captured == true）</li>
-     *   <li>{@code not_captured} — 区域未被占领（captured == false）</li>
-     *   <li>{@code owner_team} — 区域的 ownerTeam 匹配 target_team</li>
-     * </ul>
+     * 从条件节点的输出端口出发，沿连线追踪到目标区域/逻辑门，递归路由据点。
      */
-    private static boolean evaluateZoneCondition(String condition, String targetTeam,
-                                                  CaptureManager.ZoneEntry zoneEntry) {
+    private static void routeConditionOutput(String sourceNodeName, String sourceOutputPort,
+                                               String pointName,
+                                               Map<String, List<String>> conditionRoutedPoints,
+                                               Map<String, NodeModel> conditionModels,
+                                               Map<String, NodeModel> gateModels,
+                                               Map<String, NodeModel> zoneModels,
+                                               Map<String, CaptureManager.CapturePointEntry> newPoints,
+                                               CapturePointGraph graph,
+                                               CaptureConditionNode.ConditionType conditionType,
+                                               String compareValue) {
+        // 遍历连线，查找从 sourceNodeName.sourceOutputPort 出发的连线
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+
+                // 匹配源节点和输出端口
+                if (!fromName.equals(sourceNodeName)) continue;
+                String portName = fromPort.getUniqueName();
+                if (portName == null || !portName.equals(sourceOutputPort)) continue;
+
+                // 目标是区域：路由据点
+                if (zoneModels.containsKey(toName)) {
+                    conditionRoutedPoints.computeIfAbsent(toName, k -> new ArrayList<>()).add(pointName);
+                }
+                // 目标是逻辑门：需要进一步追踪门的输出
+                else if (gateModels.containsKey(toName)) {
+                    boolean gateResult = evaluateGateRecursive(toName, pointName,
+                            conditionModels, gateModels, zoneModels,
+                            newPoints, conditionRoutedPoints, graph,
+                            conditionType, compareValue);
+                }
+            }
+        }
+    }
+
+    /**
+     * 递归评估逻辑门节点，沿输出追踪到最终区域。
+     */
+    private static boolean evaluateGateRecursive(String gateName, String pointName,
+                                                   Map<String, NodeModel> conditionModels,
+                                                   Map<String, NodeModel> gateModels,
+                                                   Map<String, NodeModel> zoneModels,
+                                                   Map<String, CaptureManager.CapturePointEntry> newPoints,
+                                                   Map<String, List<String>> conditionRoutedPoints,
+                                                   CapturePointGraph graph,
+                                                   CaptureConditionNode.ConditionType conditionType,
+                                                   String compareValue) {
+        var nm = gateModels.get(gateName);
+        if (nm == null) return false;
+
+        String gateTypeStr = getOptionStringStatic(nm, "gate_type");
+        var gateType = LogicGateNode.GateType.fromId(gateTypeStr);
+
+        // 从连线收集此门的输入值
+        boolean inputA = false;
+        boolean inputB = false;
+        boolean hasA = false;
+        boolean hasB = false;
+
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+
+                if (!toName.equals(gateName)) continue;
+                String toPortName = toPort.getUniqueName();
+                if (toPortName == null) continue;
+
+                // 上游是条件节点
+                if (conditionModels.containsKey(fromName)) {
+                    String condType = getOptionStringStatic(fromNm, "condition_type");
+                    String cmpVal = getOptionStringStatic(fromNm, "compare_value");
+                    var ct = CaptureConditionNode.ConditionType.fromId(condType);
+                    var pointEntry = newPoints.get(pointName);
+                    boolean result = evaluateNewCondition(ct, cmpVal, pointEntry, null);
+
+                    if ("in_a".equals(toPortName)) { inputA = result; hasA = true; }
+                    else if ("in_b".equals(toPortName)) { inputB = result; hasB = true; }
+                }
+                // 上游是另一个逻辑门（递归）
+                else if (gateModels.containsKey(fromName)) {
+                    boolean subResult = evaluateGateRecursive(fromName, pointName,
+                            conditionModels, gateModels, zoneModels,
+                            newPoints, conditionRoutedPoints, graph,
+                            conditionType, compareValue);
+                    if ("in_a".equals(toPortName)) { inputA = subResult; hasA = true; }
+                    else if ("in_b".equals(toPortName)) { inputB = subResult; hasB = true; }
+                }
+                // 上游是常量节点
+                else if (hasOutputPort(fromNm, "value")) {
+                    boolean constVal = getOptionBoolStatic(fromNm, "constant_value");
+                    if ("in_a".equals(toPortName)) { inputA = constVal; hasA = true; }
+                    else if ("in_b".equals(toPortName)) { inputB = constVal; hasB = true; }
+                }
+            }
+        }
+
+        // NOT 门只使用 inputA
+        boolean gateResult = gateType.evaluate(inputA, gateType == LogicGateNode.GateType.NOT ? false : inputB);
+
+        // 从此门的 result 输出端口继续追踪
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+
+                if (!fromName.equals(gateName)) continue;
+                String portName = fromPort.getUniqueName();
+                if (portName == null || !portName.equals("result")) continue;
+
+                // 输出到区域
+                if (zoneModels.containsKey(toName)) {
+                    conditionRoutedPoints.computeIfAbsent(toName, k -> new ArrayList<>()).add(pointName);
+                }
+                // 输出到另一个门（级联）
+                else if (gateModels.containsKey(toName)) {
+                    evaluateGateRecursive(toName, pointName,
+                            conditionModels, gateModels, zoneModels,
+                            newPoints, conditionRoutedPoints, graph,
+                            conditionType, compareValue);
+                }
+            }
+        }
+
+        return gateResult;
+    }
+
+    /**
+     * 跟踪条件节点的解锁输出到下游区域。
+     */
+    private static void routeUnlockOutput(String sourceNodeName, String sourceOutputPort,
+                                            String zoneName,
+                                            Map<String, List<String>> unlockDecisionRoutedDeps,
+                                            CapturePointGraph graph) {
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+
+                if (!fromName.equals(sourceNodeName)) continue;
+                String portName = fromPort.getUniqueName();
+                if (portName == null || !portName.equals(sourceOutputPort)) continue;
+
+                // 目标区域：添加解锁依赖
+                unlockDecisionRoutedDeps.computeIfAbsent(toName, k -> new ArrayList<>()).add(zoneName);
+            }
+        }
+    }
+
+    /**
+     * 静态版本 getOptionString，用于 routeConditionOutput 中访问节点模型。
+     */
+    private static String getOptionStringStatic(NodeModel nm, String id) {
+        try {
+            if (nm instanceof com.lowdragmc.lowdraglib2.nodegraphtookit.model.INodeWithOptions opts) {
+                var opt = opts.getNodeOptionById(id);
+                if (opt instanceof com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.NodeOption nodeOpt) {
+                    var port = nodeOpt.getPortModel();
+                    if (port instanceof com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable cfg) {
+                        var v = cfg.getValue();
+                        return v != null ? v.toString() : "";
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    /**
+     * 静态版本 getOptionBool。
+     */
+    private static boolean getOptionBoolStatic(NodeModel nm, String id) {
+        String val = getOptionStringStatic(nm, id);
+        if (val == null || val.isEmpty()) return false;
+        return "true".equalsIgnoreCase(val) || "1".equals(val);
+    }
+
+    /**
+     * 评估旧版 CaptureDecisionNode 对区域的条件（兼容旧数据）。
+     */
+    private static boolean evaluateOldZoneCondition(String condition, String targetTeam,
+                                                      CaptureManager.ZoneEntry zoneEntry) {
         if (condition == null || condition.isEmpty()) condition = "captured";
 
         return switch (condition) {
@@ -613,6 +940,7 @@ public class CapturePointGraphScreen {
                                     condition != null ? condition : "captured",
                                     targetTeam, progress));
                         }
+                        // 新版节点：条件/逻辑门/动作/常量 — 布局已由 layouts 保存
                     }
                 }
             }
@@ -953,6 +1281,40 @@ public class CapturePointGraphScreen {
                             var cond = ConditionMode.fromId(conditionStr);
                             nm.setTitle(Component.literal(name + " [? ")
                                     .append(cond.getDisplayName())
+                                    .append(Component.literal("]")));
+                        } else if (hasInputPort(nm, "point_target") || hasInputPort(nm, "zone_target")) {
+                            // 条件节点
+                            String condType = getOptionString(nm, "condition_type");
+                            if (condType == null || condType.isEmpty()) condType = "point_captured";
+                            var ct = CaptureConditionNode.ConditionType.fromId(condType);
+                            String cmpVal = getOptionString(nm, "compare_value");
+                            String cmpDisplay = cmpVal != null && !cmpVal.isEmpty() ? "=" + cmpVal : "";
+                            nm.setTitle(Component.literal(name + " [? ")
+                                    .append(ct.getDisplayName())
+                                    .append(Component.literal(cmpDisplay + "]")));
+                        } else if (hasInputPort(nm, "in_a")) {
+                            // 逻辑门节点
+                            String gateType = getOptionString(nm, "gate_type");
+                            if (gateType == null || gateType.isEmpty()) gateType = "and";
+                            var gt = LogicGateNode.GateType.fromId(gateType);
+                            nm.setTitle(Component.literal(name + " [")
+                                    .append(gt.getDisplayName())
+                                    .append(Component.literal("]")));
+                        } else if (hasInputPort(nm, "trigger")) {
+                            // 动作节点
+                            String actionType = getOptionString(nm, "action_type");
+                            if (actionType == null || actionType.isEmpty()) actionType = "set_captured";
+                            var at = CaptureActionNode.ActionType.fromId(actionType);
+                            String target = getOptionString(nm, "target_name");
+                            String tgtDisplay = target != null && !target.isEmpty() ? " " + target : "";
+                            nm.setTitle(Component.literal(name + " [")
+                                    .append(at.getDisplayName())
+                                    .append(Component.literal(tgtDisplay + "]")));
+                        } else if (hasOutputPort(nm, "value")) {
+                            // 常量节点
+                            boolean constVal = getOptionBool(nm, "constant_value");
+                            nm.setTitle(Component.literal(name + " [")
+                                    .append(Component.literal(String.valueOf(constVal)))
                                     .append(Component.literal("]")));
                         } else if (hasOutputPort(nm, "zone_out") || hasInputPort(nm, "point_in")) {
                             // 区域节点：显示名称 + 占领状态 + 点数

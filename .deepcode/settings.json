@@ -1,4 +1,5 @@
 {
   "reasoningEffort": "max",
+  "model": "deepseek-v4-flash",
   "thinkingEnabled": true
 }
