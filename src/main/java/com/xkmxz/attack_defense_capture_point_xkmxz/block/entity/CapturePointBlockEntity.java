@@ -16,6 +16,7 @@ import com.xkmxz.attack_defense_capture_point_xkmxz.network.CaptureDataSyncPaylo
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.BlockEntityActionPayload;
 import com.xkmxz.attack_defense_capture_point_xkmxz.nodegraph.CapturePointGraphScreen;
 import com.xkmxz.attack_defense_capture_point_xkmxz.nodegraph.ToastNotification;
+import com.xkmxz.attack_defense_capture_point_xkmxz.render.ClientCaptureDataCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -139,6 +140,16 @@ public class CapturePointBlockEntity extends BlockEntity {
     public double getRadius() { return radius; }
     public int getDisplayColor() { return displayColor; }
     public boolean isShowRange() { return showRange; }
+
+    /**
+     * 从客户端缓存读取据点的渲染数据（CaptureManager 的同步副本）。
+     * 优先于本地缓存字段，确保方块菜单显示的数据与 CaptureManager 一致。
+     */
+    @org.jetbrains.annotations.Nullable
+    private CaptureDataSyncPayload.PointRenderData getPointDataFromCache() {
+        if (boundPointName.isEmpty()) return null;
+        return ClientCaptureDataCache.INSTANCE.getPoints().get(boundPointName);
+    }
 
     // ================================================================
     //  服务端同步引擎
@@ -421,17 +432,23 @@ public class CapturePointBlockEntity extends BlockEntity {
             return;
         }
 
+        // 从客户端缓存读取据点数据（来自 CaptureManager）
+        var cached = getPointDataFromCache();
+        double displayRadius = cached != null ? cached.radius() : radius;
+        boolean displayShowRange = cached != null ? cached.showRange() : showRange;
+
         ToastNotification.push(ToastNotification.Type.INFO,
                 Component.translatable("toast.capture_point_block.status_name", boundPointName));
         ToastNotification.push(ToastNotification.Type.INFO,
                 Component.translatable("toast.capture_point_block.status_pos",
                         worldPosition.getX(), worldPosition.getY(), worldPosition.getZ()));
         ToastNotification.push(ToastNotification.Type.INFO,
-                Component.translatable("toast.capture_point_block.status_radius", (int) radius));
+                Component.translatable("toast.capture_point_block.status_radius", (int) displayRadius));
         ToastNotification.push(ToastNotification.Type.INFO,
                 Component.translatable("toast.capture_point_block.status_range",
-                        showRange ? Component.translatable("gui.capture_point_graph.dialog.advanced_config.toggle.on").getString()
-                                  : Component.translatable("gui.capture_point_graph.dialog.advanced_config.toggle.off").getString()));
+                        displayShowRange
+                                ? Component.translatable("gui.capture_point_graph.dialog.advanced_config.toggle.on").getString()
+                                : Component.translatable("gui.capture_point_graph.dialog.advanced_config.toggle.off").getString()));
 
         // 尝试获取服务端补充数据（仅单机可用）
         var mgr = getServerDataAccess();
@@ -452,10 +469,12 @@ public class CapturePointBlockEntity extends BlockEntity {
      * 通过网络包发送到服务端处理。
      */
     private void funcSetRadius(Minecraft mc) {
+        var cached = getPointDataFromCache();
+        double currentRadius = cached != null ? cached.radius() : radius;
         openInputDialog(
                 Component.translatable("gui.capture_point_block.dialog.radius.title"),
                 Component.translatable("gui.capture_point_block.dialog.radius.label"),
-                String.valueOf((int) radius),
+                String.valueOf((int) currentRadius),
                 (input) -> {
                     try {
                         double newRadius = Double.parseDouble(input);
@@ -487,7 +506,9 @@ public class CapturePointBlockEntity extends BlockEntity {
      * 通过网络包发送到服务端处理。
      */
     private void funcToggleShowRange(Minecraft mc) {
-        boolean newShow = !showRange; // 计算期望的新状态，但不下写到本地缓存，由服务端同步回来
+        var cached = getPointDataFromCache();
+        boolean currentShowRange = cached != null ? cached.showRange() : showRange;
+        boolean newShow = !currentShowRange; // 计算期望的新状态，不下写本地缓存，由服务端同步回来
 
         if (!boundPointName.isEmpty()) {
             sendAction("toggle_range", boundPointName + "," + newShow);
