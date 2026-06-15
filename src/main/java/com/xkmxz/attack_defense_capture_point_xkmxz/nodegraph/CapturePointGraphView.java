@@ -3,8 +3,10 @@ package com.xkmxz.attack_defense_capture_point_xkmxz.nodegraph;
 import com.lowdragmc.lowdraglib2.gui.util.TreeBuilder;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.graph.Graph;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.gui.GraphView;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.GraphElementModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.INodeWithOptions;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.AbstractNodeModel;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.wire.WireModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
@@ -161,6 +163,14 @@ public class CapturePointGraphView extends GraphView {
                         CapturePointGraphDialogs.openCreateZoneDialog(level);
                     }
                 });
+
+        // 如果有选中的连线，添加\"删除连线\"操作（直接删除，无需确认对话框）
+        boolean hasWireSelected = getSelected().stream().anyMatch(m -> m instanceof WireModel);
+        if (hasWireSelected) {
+            menu.leaf(
+                    Component.translatable("gui.capture_point_graph.menu.delete_wire").getString(),
+                    () -> deleteSelectedElements(m -> m instanceof WireModel));
+        }
 
         // 如果有选中的节点，添加操作选项
         var selectedModels = getSelectedModels();

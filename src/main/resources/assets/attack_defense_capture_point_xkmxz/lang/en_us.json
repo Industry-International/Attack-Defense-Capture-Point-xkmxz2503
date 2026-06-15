@@ -102,6 +102,7 @@
   "gui.capture_point_graph.menu.create_point": "Create Point",
   "gui.capture_point_graph.menu.create_zone": "Create Zone",
   "gui.capture_point_graph.menu.delete": "Delete",
+  "gui.capture_point_graph.menu.delete_wire": "Delete Wire",
   "gui.capture_point_graph.menu.advanced_config": "Advanced Config",
   "gui.capture_point_graph.menu.edit_properties": "Edit Properties",
   "gui.capture_point_graph.menu.list_status": "Show Status",

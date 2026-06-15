@@ -102,6 +102,7 @@
   "gui.capture_point_graph.menu.create_point": "创建据点",
   "gui.capture_point_graph.menu.create_zone": "创建区域",
   "gui.capture_point_graph.menu.delete": "删除",
+  "gui.capture_point_graph.menu.delete_wire": "删除连线",
   "gui.capture_point_graph.menu.advanced_config": "高级配置",
   "gui.capture_point_graph.menu.edit_properties": "编辑属性",
   "gui.capture_point_graph.menu.list_status": "查看状态",

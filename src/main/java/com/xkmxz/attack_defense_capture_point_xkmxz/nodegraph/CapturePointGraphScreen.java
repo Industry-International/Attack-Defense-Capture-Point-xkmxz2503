@@ -214,8 +214,8 @@ public class CapturePointGraphScreen {
      * 读取所有节点模型中的选项值，同时解析连线（wire）关系，
      * 构造新的 points/zones 映射。
      * <p>
-     * 区域包含的据点列表优先从连线解析（point_in 端口已设为 MULTIPLE，
-     * 支持多个据点连线到同一区域），回退到 edit_points 选项。
+     * 区域包含的据点列表只从连线（wire）解析（point_in 端口已设为 MULTIPLE，
+     * 支持多个据点连线到同一区域）。删除连线即删除据点归属关系。
      */
     private Map.Entry<Map<String, CaptureManager.CapturePointEntry>, Map<String, CaptureManager.ZoneEntry>> buildSnapshotFromGraph() {
         var newPoints = new LinkedHashMap<String, CaptureManager.CapturePointEntry>();
@@ -311,17 +311,10 @@ public class CapturePointGraphScreen {
                 reqZone = getOptionString(nm, "required_zone");
             }
 
-            // 据点列表：优先从连线解析，回退到 edit_points 选项
+            // 据点列表：只从连线（wire）解析——删除连线即删除归属关系，不依赖 edit_points
             List<String> cpList = wireBasedZonePoints.get(name);
             if (cpList == null) {
                 cpList = new ArrayList<>();
-                String pointsStr = getOptionString(nm, "edit_points");
-                if (!pointsStr.isEmpty()) {
-                    for (var pn : pointsStr.split(",")) {
-                        pn = pn.trim();
-                        if (!pn.isEmpty()) cpList.add(pn);
-                    }
-                }
             }
 
             newZones.put(name, new CaptureManager.ZoneEntry(
