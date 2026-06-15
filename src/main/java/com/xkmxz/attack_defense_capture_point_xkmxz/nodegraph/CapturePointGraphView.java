@@ -7,12 +7,15 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.GraphElementModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.INodeWithOptions;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.AbstractNodeModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.wire.WireModel;
+import com.xkmxz.attack_defense_capture_point_xkmxz.manager.CaptureManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
 
 import java.util.List;
 import java.util.stream.Stream;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 
 /**
  * 据点管理图视图 - 使用 LDLib2 nodegraphtookit 框架提供节点图编辑体验。
@@ -25,6 +28,13 @@ public class CapturePointGraphView extends GraphView {
     private Runnable refreshCallback;
     private int refreshCounter;
     private CapturePointGraphScreen screen;
+    /** 待恢复的视角状态（延迟到第一帧 screenTick 后应用） */
+    private boolean hasPendingViewState = false;
+    private float pendingOffsetX, pendingOffsetY, pendingScale;
+    /** 是否在下一帧执行 fitGraphChildren */
+    private boolean pendingFit = false;
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     public CapturePointGraphView() {
         super();
@@ -104,6 +114,25 @@ public class CapturePointGraphView extends GraphView {
         super.screenTick();
         hideDefaultItemLibraryIfDisplayed();
 
+        // 应用待处理的视角状态（延迟到 layout 完成后的第一帧）
+        if (hasPendingViewState) {
+            hasPendingViewState = false;
+            try {
+                this.graphView.setOffsetX(pendingOffsetX);
+                this.graphView.setOffsetY(pendingOffsetY);
+                // 使用反射设置缩放（LDLib2 的 GraphView 未公开 setScale）
+                setGraphViewScale(pendingScale);
+                LOGGER.info("Restored view state: offsetX={}, offsetY={}, scale={}",
+                        pendingOffsetX, pendingOffsetY, pendingScale);
+            } catch (Exception e) {
+                LOGGER.warn("Failed to restore view state, falling back to fit", e);
+                this.fitGraphChildren(40f);
+            }
+        } else if (pendingFit) {
+            pendingFit = false;
+            this.fitGraphChildren(40f);
+        }
+
         // 驱动通知气泡动画
         if (toastLayer != null) {
             toastLayer.tick();
@@ -122,6 +151,63 @@ public class CapturePointGraphView extends GraphView {
             itemLibrary.hide();
         }
         suppressDefaultItemLibrary();
+    }
+
+    // ---- 视角状态管理 ----
+
+    /**
+     * 设置待恢复的视角状态，将在下一帧 screenTick 时应用。
+     */
+    public void setPendingViewState(float offsetX, float offsetY, float scale) {
+        this.hasPendingViewState = true;
+        this.pendingOffsetX = offsetX;
+        this.pendingOffsetY = offsetY;
+        this.pendingScale = scale;
+    }
+
+    /** 请求在下一帧执行 fitGraphChildren */
+    public void requestFitOnNextTick() {
+        this.pendingFit = true;
+    }
+
+    /** 获取当前视角状态 */
+    public CaptureManager.ViewState getCurrentViewState() {
+        return new CaptureManager.ViewState(
+                this.graphView.getOffsetX(),
+                this.graphView.getOffsetY(),
+                this.graphView.getScale()
+        );
+    }
+
+    /**
+     * 通过反射设置内部 graphView 的缩放值（LDLib2 未公开 setScale 方法）。
+     */
+    private void setGraphViewScale(float scale) {
+        try {
+            var field = this.graphView.getClass().getDeclaredField("scale");
+            field.setAccessible(true);
+            field.setFloat(this.graphView, scale);
+            // 刷新变换矩阵（protected 方法，需要反射调用）
+            var refreshMethod = this.graphView.getClass().getDeclaredMethod("refreshContentTransform");
+            refreshMethod.setAccessible(true);
+            refreshMethod.invoke(this.graphView);
+        } catch (Exception e) {
+            LOGGER.warn("Cannot set graph view scale via reflection", e);
+        }
+    }
+
+    /**
+     * 将屏幕坐标转换为图空间坐标（考虑平移和缩放）。
+     */
+    private org.joml.Vector2f screenToGraphCoords(float screenX, float screenY) {
+        float offsetX = this.graphView.getOffsetX();
+        float offsetY = this.graphView.getOffsetY();
+        float scale = this.graphView.getScale();
+        if (scale <= 0) scale = 1f;
+        return new org.joml.Vector2f(
+                (screenX - offsetX) / scale,
+                (screenY - offsetY) / scale
+        );
     }
 
     // ---- 右键菜单 ----
@@ -260,13 +346,16 @@ public class CapturePointGraphView extends GraphView {
 
     /**
      * 通用方法：在右键点击位置创建自定义节点模型。
+     * 将屏幕坐标（screenX, screenY）转换为图空间坐标，确保节点出现在鼠标位置下。
      */
     private void createCustomNode(float screenX, float screenY,
                                    com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node node,
                                    String namePrefix, String langKey) {
         if (level != null && screen != null) {
+            // 将屏幕坐标转换为图空间坐标（考虑平移和缩放）
+            var graphPos = screenToGraphCoords(screenX, screenY);
             var nodeModel = screen.getGraph().graphModel.createNodeModel(node,
-                    new org.joml.Vector2f(screenX, screenY));
+                    new org.joml.Vector2f(graphPos.x, graphPos.y));
             String name = namePrefix + java.util.UUID.randomUUID().toString().substring(0, 6);
             nodeModel.setName(name);
             nodeModel.setTitle(Component.translatable(langKey));

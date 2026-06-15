@@ -28,6 +28,9 @@ public class CaptureManager extends SavedData {
     private final Map<String, DecisionNodeData> decisionNodes = new LinkedHashMap<>();
     /** 通用节点选项：nodeName → { optionId → optionValue } 用于持久化条件/逻辑门/动作/常量等节点配置 */
     private final Map<String, Map<String, String>> nodeOptions = new LinkedHashMap<>();
+    /** 节点图视角状态（平移位置 + 缩放），null 表示使用默认视角（fit to children） */
+    @Nullable
+    private ViewState viewState = null;
     private long version = 0;
     @Nullable
     private String defenderTeam = null; // 默认防守方队伍，不为 null 时所有据点初始归此队伍
@@ -234,6 +237,40 @@ public class CaptureManager extends SavedData {
         }
     }
 
+    // ---- View State (节点图视角状态) ----
+
+    public record ViewState(float offsetX, float offsetY, float scale) {
+        private static final String TAG_OFFSET_X = "offsetX";
+        private static final String TAG_OFFSET_Y = "offsetY";
+        private static final String TAG_SCALE = "scale";
+
+        public CompoundTag toNbt() {
+            var tag = new CompoundTag();
+            tag.putFloat(TAG_OFFSET_X, offsetX);
+            tag.putFloat(TAG_OFFSET_Y, offsetY);
+            tag.putFloat(TAG_SCALE, scale);
+            return tag;
+        }
+
+        public static ViewState fromNbt(CompoundTag tag) {
+            return new ViewState(
+                    tag.getFloat(TAG_OFFSET_X),
+                    tag.getFloat(TAG_OFFSET_Y),
+                    tag.getFloat(TAG_SCALE)
+            );
+        }
+    }
+
+    public void setViewState(@Nullable ViewState viewState) {
+        this.viewState = viewState;
+        setDirty();
+    }
+
+    @Nullable
+    public ViewState getViewState() {
+        return viewState;
+    }
+
     // ---- Singleton Access ----
 
     public static CaptureManager get(Level level) {
@@ -281,13 +318,14 @@ public class CaptureManager extends SavedData {
     }
 
     /**
-     * 批量应用 GUI 编辑器的完整数据快照 + 节点布局 + 节点选项。
+     * 批量应用 GUI 编辑器的完整数据快照 + 节点布局 + 节点选项 + 视角状态。
      */
     public void applyGraphSnapshotWithLayout(Map<String, CapturePointEntry> newPoints,
                                               Map<String, ZoneEntry> newZones,
                                               Map<String, NodeLayout> layouts,
                                               Map<String, DecisionNodeData> decisions,
-                                              Map<String, Map<String, String>> nodeOpts) {
+                                              Map<String, Map<String, String>> nodeOpts,
+                                              @Nullable ViewState viewState) {
         points.clear();
         zones.clear();
         points.putAll(newPoints);
@@ -298,6 +336,7 @@ public class CaptureManager extends SavedData {
         decisionNodes.putAll(decisions);
         nodeOptions.clear();
         nodeOptions.putAll(nodeOpts);
+        this.viewState = viewState;
         bumpVersion();
         LOGGER.info("Applied graph snapshot: {} points, {} zones, {} layouts, {} decisions, {} nodeOptions (version {})",
                 points.size(), zones.size(), layouts.size(), decisions.size(), nodeOpts.size(), version);
@@ -665,6 +704,11 @@ public class CaptureManager extends SavedData {
             tag.put("nodeOptions", optsList);
         }
 
+        // 保存视角状态
+        if (viewState != null) {
+            tag.put("viewState", viewState.toNbt());
+        }
+
         return tag;
     }
 
@@ -674,6 +718,7 @@ public class CaptureManager extends SavedData {
         nodeLayouts.clear();
         decisionNodes.clear();
         nodeOptions.clear();
+        viewState = null;
         defenderTeam = null;
 
         var pointsList = tag.getList("points", Tag.TAG_COMPOUND);
@@ -730,6 +775,13 @@ public class CaptureManager extends SavedData {
                     nodeOptions.put(name, optMap);
                 }
             }
+        }
+
+        // 加载视角状态
+        if (tag.contains("viewState", Tag.TAG_COMPOUND)) {
+            viewState = ViewState.fromNbt(tag.getCompound("viewState"));
+        } else {
+            viewState = null;
         }
 
         LOGGER.info("Loaded {} points, {} zones, {} layouts, {} decisions, {} nodeOptions (version {}), defender={}",

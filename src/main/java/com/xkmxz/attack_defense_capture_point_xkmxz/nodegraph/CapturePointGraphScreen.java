@@ -106,9 +106,36 @@ public class CapturePointGraphScreen {
         // 注册选项值变更监听器，实现 GUI→Game 实时回写
         registerOptionChangeListeners();
 
+        // 恢复保存的视角状态，或自动 fit 到所有节点
+        restoreOrFitViewState();
+
         var ui = ModularUI.of(UI.of(root));
         mc.setScreen(new ModularUIScreen(ui,
                 Component.translatable("gui.attack_defense_capture_point_xkmxz.graph.title")));
+    }
+
+    /**
+     * 恢复保存的视角状态，或自动 fit 到所有节点。
+     * 视角状态保存在 CaptureManager 中，保存时实时记录，打开时延迟到下一帧应用。
+     */
+    private void restoreOrFitViewState() {
+        try {
+            var mgr = getCaptureManager();
+            if (mgr == null) return;
+            var savedViewState = mgr.getViewState();
+            if (savedViewState != null) {
+                graphView.setPendingViewState(
+                        savedViewState.offsetX(),
+                        savedViewState.offsetY(),
+                        savedViewState.scale()
+                );
+            } else {
+                graphView.requestFitOnNextTick();
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to restore view state: {}", e.getMessage());
+            graphView.requestFitOnNextTick();
+        }
     }
 
     private UIElement createTopBar() {
@@ -761,10 +788,15 @@ public class CapturePointGraphScreen {
             var newPoints = snapshot.getKey();
             var newZones = snapshot.getValue();
 
-            // 收集所有节点的布局信息 + 判断器节点数据 + 通用节点选项
+            // 收集所有节点的布局信息 + 判断器节点数据 + 通用节点选项 + 视角状态
             var layouts = new LinkedHashMap<String, CaptureManager.NodeLayout>();
             var decisions = new LinkedHashMap<String, CaptureManager.DecisionNodeData>();
             var nodeOpts = new LinkedHashMap<String, Map<String, String>>();
+            // 获取当前视角状态
+            CaptureManager.ViewState currentViewState = null;
+            try {
+                currentViewState = graphView.getCurrentViewState();
+            } catch (Exception ignored) {}
             for (var element : graph.graphModel.getGraphElementModels()) {
                 if (element instanceof NodeModel nm) {
                     String name = nm.getName();
@@ -797,13 +829,13 @@ public class CapturePointGraphScreen {
                 long currentVersion = mgr.getVersion();
                 if (currentVersion != snapshotVersion) {
                     // 数据已被外部修改（命令/方块），弹出确认对话框
-                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions, nodeOpts);
+                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions, nodeOpts, currentViewState);
                     return;
                 }
             }
 
-            // 无冲突或非编辑模式：直接应用（含布局 + 判断器 + 节点选项）
-            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts);
+            // 无冲突或非编辑模式：直接应用（含布局 + 判断器 + 节点选项 + 视角状态）
+            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, currentViewState);
 
             // 立即同步所有已加载方块实体的渲染缓存
             var serverLevel = getServerLevel();
@@ -864,7 +896,8 @@ public class CapturePointGraphScreen {
                                      Map<String, CaptureManager.ZoneEntry> newZones,
                                      Map<String, CaptureManager.NodeLayout> layouts,
                                      Map<String, CaptureManager.DecisionNodeData> decisions,
-                                     Map<String, Map<String, String>> nodeOpts) {
+                                     Map<String, Map<String, String>> nodeOpts,
+                                     @Nullable CaptureManager.ViewState viewState) {
         var mc = mc();
         int dw = 340, dh = 130;
 
@@ -893,9 +926,9 @@ public class CapturePointGraphScreen {
         overwriteBtn.setOnClick(e -> {
             var overwriteMgr = getCaptureManager();
             if (overwriteMgr != null) {
-                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts);
+                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, viewState);
             } else {
-                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts);
+                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, viewState);
             }
 
             var sl = getServerLevel();
