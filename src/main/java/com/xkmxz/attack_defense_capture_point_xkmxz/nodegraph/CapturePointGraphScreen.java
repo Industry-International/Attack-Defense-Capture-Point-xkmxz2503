@@ -257,6 +257,8 @@ public class CapturePointGraphScreen {
         var wireBasedZonePoints = new LinkedHashMap<String, List<String>>();
         // wireBasedRequiredZone: zoneName → requiredZoneName 区域依赖
         var wireBasedRequiredZone = new LinkedHashMap<String, String>();
+        // wireBasedUnlockDeps: zoneName → [depZoneName, ...] 🔓 解锁依赖（unlock_out → unlock_in），独立于区域信号
+        var wireBasedUnlockDeps = new LinkedHashMap<String, List<String>>();
         // decisionInputs: decisionName → [pointName, ...] 判断器输入（连接到target端口的据点）
         var decisionInputs = new LinkedHashMap<String, List<String>>();
         // decisionOutputs: decisionName → (portName → [zoneName, ...]) 判断器各输出端口连接的区域
@@ -313,6 +315,10 @@ public class CapturePointGraphScreen {
                 else if (hasInputPort(toNm, "required_zone") && hasOutputPort(fromNm, "zone_false_out")) {
                     zoneDecisionOutputs.computeIfAbsent(fromName, k -> new LinkedHashMap<>())
                             .computeIfAbsent("zone_false_out", k -> new ArrayList<>()).add(toName);
+                }
+                // 7. 🔓 区域→区域解锁: from=unlock_out(O)  to=unlock_in(I) — 独立于区域依赖的解锁接口
+                else if (hasOutputPort(fromNm, "unlock_out") && hasInputPort(toNm, "unlock_in")) {
+                    wireBasedUnlockDeps.computeIfAbsent(toName, k -> new ArrayList<>()).add(fromName);
                 }
             }
         }
@@ -426,8 +432,12 @@ public class CapturePointGraphScreen {
                 }
             }
 
+            // 🔓 解锁依赖：从 unlock_out → unlock_in 连线解析
+            var unlockDeps = wireBasedUnlockDeps.get(name);
+            var unlockDepList = unlockDeps != null ? unlockDeps : new ArrayList<String>();
+
             newZones.put(name, new CaptureManager.ZoneEntry(
-                    name, cpList, reqZone.isEmpty() ? null : reqZone, zoneCaptured, null));
+                    name, cpList, reqZone.isEmpty() ? null : reqZone, zoneCaptured, null, unlockDepList));
         }
 
         // ---- Phase 6: 区域判断器条件路由 ----
@@ -858,6 +868,28 @@ public class CapturePointGraphScreen {
                 } catch (Exception e) {
                     LOGGER.warn("Failed to create dependency wire from zone '{}' to zone '{}': {}",
                             zoneEntry.requiredZone(), zoneEntry.name(), e.getMessage());
+                }
+            }
+
+            // 🔓 建立解锁连线（unlock_out → unlock_in），独立于区域依赖
+            for (var zoneEntry : zones.values()) {
+                if (zoneEntry.unlockDependencies() == null || zoneEntry.unlockDependencies().isEmpty()) continue;
+                var zoneModel = zoneModels.get(zoneEntry.name());
+                if (zoneModel == null) continue;
+                var unlockInPort = zoneModel.getInputsById().get("unlock_in");
+                if (unlockInPort == null) continue;
+
+                for (var depName : zoneEntry.unlockDependencies()) {
+                    var depZoneModel = zoneModels.get(depName);
+                    if (depZoneModel == null) continue;
+                    var unlockOutPort = depZoneModel.getOutputsById().get("unlock_out");
+                    if (unlockOutPort == null) continue;
+                    try {
+                        graph.graphModel.createWire(unlockOutPort, unlockInPort);
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to create unlock wire from zone '{}' to zone '{}': {}",
+                                depName, zoneEntry.name(), e.getMessage());
+                    }
                 }
             }
 

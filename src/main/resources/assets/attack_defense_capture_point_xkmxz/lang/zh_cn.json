@@ -108,6 +108,8 @@
   "node.capture_zone.port.point_in": "成员据点",
   "node.capture_zone.port.zone_out": "区域信号",
   "node.capture_zone.port.required_zone": "依赖",
+  "node.capture_zone.port.unlock_out": "解锁输出",
+  "node.capture_zone.port.unlock_in": "解锁输入",
 
   "gui.capture_point_graph.menu.create_point": "创建据点",
   "gui.capture_point_graph.menu.create_zone": "创建区域",

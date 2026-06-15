@@ -108,6 +108,8 @@
   "node.capture_zone.port.point_in": "Member Points",
   "node.capture_zone.port.zone_out": "Zone Signal",
   "node.capture_zone.port.required_zone": "Requires",
+  "node.capture_zone.port.unlock_out": "Unlock Out",
+  "node.capture_zone.port.unlock_in": "Unlock In",
 
   "gui.capture_point_graph.menu.create_point": "Create Point",
   "gui.capture_point_graph.menu.create_zone": "Create Zone",

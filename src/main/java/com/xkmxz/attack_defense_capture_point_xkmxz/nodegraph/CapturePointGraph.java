@@ -24,7 +24,8 @@ public class CapturePointGraph extends Graph {
 
     private static final List<TypeHandle> SUPPORT_TYPES = List.of(
             CapturePointTypes.POINT_SIGNAL,
-            CapturePointTypes.ZONE_SIGNAL
+            CapturePointTypes.ZONE_SIGNAL,
+            CapturePointTypes.UNLOCK_SIGNAL
     );
 
     @Override

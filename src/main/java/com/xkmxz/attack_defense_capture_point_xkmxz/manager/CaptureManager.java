@@ -115,7 +115,7 @@ public class CaptureManager extends SavedData {
     }
 
     public record ZoneEntry(String name, List<String> capturePoints, @Nullable String requiredZone, boolean captured,
-                            @Nullable String ownerTeam) {
+                            @Nullable String ownerTeam, List<String> unlockDependencies) {
 
         public CompoundTag toNbt() {
             var tag = new CompoundTag();
@@ -128,6 +128,13 @@ public class CaptureManager extends SavedData {
             if (requiredZone != null) tag.putString("requiredZone", requiredZone);
             tag.putBoolean("captured", captured);
             if (ownerTeam != null) tag.putString("ownerTeam", ownerTeam);
+            if (unlockDependencies != null && !unlockDependencies.isEmpty()) {
+                var unlockList = new ListTag();
+                for (var dep : unlockDependencies) {
+                    unlockList.add(StringTag.valueOf(dep));
+                }
+                tag.put("unlockDependencies", unlockList);
+            }
             return tag;
         }
 
@@ -141,23 +148,34 @@ public class CaptureManager extends SavedData {
             var requiredZone = tag.contains("requiredZone") ? tag.getString("requiredZone") : null;
             var captured = tag.contains("captured") && tag.getBoolean("captured");
             var ownerTeam = tag.contains("ownerTeam") ? tag.getString("ownerTeam") : null;
-            return new ZoneEntry(name, points, requiredZone, captured, ownerTeam);
+            var unlockDeps = new ArrayList<String>();
+            if (tag.contains("unlockDependencies", Tag.TAG_LIST)) {
+                var unlockList = tag.getList("unlockDependencies", Tag.TAG_STRING);
+                for (int i = 0; i < unlockList.size(); i++) {
+                    unlockDeps.add(unlockList.getString(i));
+                }
+            }
+            return new ZoneEntry(name, points, requiredZone, captured, ownerTeam, unlockDeps);
         }
 
         public ZoneEntry withCaptured(boolean newCaptured) {
-            return new ZoneEntry(name, capturePoints, requiredZone, newCaptured, ownerTeam);
+            return new ZoneEntry(name, capturePoints, requiredZone, newCaptured, ownerTeam, unlockDependencies);
         }
 
         public ZoneEntry withOwnerTeam(@Nullable String newOwnerTeam) {
-            return new ZoneEntry(name, capturePoints, requiredZone, captured, newOwnerTeam);
+            return new ZoneEntry(name, capturePoints, requiredZone, captured, newOwnerTeam, unlockDependencies);
         }
 
         public ZoneEntry withCapturePoints(List<String> newCapturePoints) {
-            return new ZoneEntry(name, newCapturePoints, requiredZone, captured, ownerTeam);
+            return new ZoneEntry(name, newCapturePoints, requiredZone, captured, ownerTeam, unlockDependencies);
         }
 
         public ZoneEntry withRequiredZone(@Nullable String newRequiredZone) {
-            return new ZoneEntry(name, capturePoints, newRequiredZone, captured, ownerTeam);
+            return new ZoneEntry(name, capturePoints, newRequiredZone, captured, ownerTeam, unlockDependencies);
+        }
+
+        public ZoneEntry withUnlockDependencies(List<String> newUnlockDeps) {
+            return new ZoneEntry(name, capturePoints, requiredZone, captured, ownerTeam, newUnlockDeps);
         }
     }
 
@@ -453,7 +471,7 @@ public class CaptureManager extends SavedData {
     }
 
     public void createZone(String name, @Nullable String requiredZone) {
-        zones.put(name, new ZoneEntry(name, new ArrayList<>(), requiredZone, false, null));
+        zones.put(name, new ZoneEntry(name, new ArrayList<>(), requiredZone, false, null, new ArrayList<>()));
         bumpVersion();
     }
 
@@ -468,7 +486,7 @@ public class CaptureManager extends SavedData {
             var newList = new ArrayList<>(zone.capturePoints());
             if (!newList.contains(pointName)) {
                 newList.add(pointName);
-                zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam()));
+                zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam(), zone.unlockDependencies()));
                 bumpVersion();
             }
         }
@@ -479,7 +497,7 @@ public class CaptureManager extends SavedData {
         if (zone != null) {
             var newList = new ArrayList<>(zone.capturePoints());
             newList.remove(pointName);
-            zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam()));
+            zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam(), zone.unlockDependencies()));
             bumpVersion();
         }
     }
@@ -494,7 +512,7 @@ public class CaptureManager extends SavedData {
         var zone = zones.get(zoneName);
         if (zone != null) {
             // 保留原有据点列表和占领状态，仅修改区域依赖
-            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), requiredZone, zone.captured(), zone.ownerTeam()));
+            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), requiredZone, zone.captured(), zone.ownerTeam(), zone.unlockDependencies()));
             bumpVersion();
         }
     }
@@ -522,6 +540,16 @@ public class CaptureManager extends SavedData {
     public boolean canAccessZone(String zoneName) {
         var zone = zones.get(zoneName);
         if (zone == null) return false;
+
+        // 先检查解锁依赖（unlock_out → unlock_in 接口），优先级高于 requiredZone
+        if (zone.unlockDependencies() != null && !zone.unlockDependencies().isEmpty()) {
+            for (var dep : zone.unlockDependencies()) {
+                if (!canAccessZone(dep)) return false;
+            }
+            return true; // 所有解锁依赖的���域都可访问
+        }
+
+        // 无解锁依赖时回退到 requiredZone（zone_out → required_zone 依赖接口）
         if (zone.requiredZone() == null || zone.requiredZone().isEmpty()) return true;
         return isZoneCaptured(zone.requiredZone());
     }

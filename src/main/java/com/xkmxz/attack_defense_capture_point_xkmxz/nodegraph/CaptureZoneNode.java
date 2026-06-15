@@ -80,6 +80,8 @@ public class CaptureZoneNode extends Node {
                 .withDisplayName(Component.translatable("node.capture_zone.port.point_in"))
                 .build();
         pointInPort.setPortCapacity(PortCapacity.MULTIPLE); // 允许多个据点连线到此端口
+
+        // ---- 区域依赖接口 (zone_out → required_zone) ----
         // 输出端口 - 发出区域信号（连接到其他区域的 required_zone 输入，表示区域先后关系）
         context.addOutputPort("zone_out", CapturePointTypes.ZONE_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_zone.port.zone_out"))
@@ -88,5 +90,16 @@ public class CaptureZoneNode extends Node {
         context.addInputPort("required_zone", CapturePointTypes.ZONE_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_zone.port.required_zone"))
                 .build();
+
+        // ---- 区域解锁接口 (unlock_out → unlock_in)，独立于区域依赖接口 ----
+        // 输出端口 - 发出解锁信号（此区域已解锁时通知依赖方）
+        context.addOutputPort("unlock_out", CapturePointTypes.UNLOCK_SIGNAL)
+                .withDisplayName(Component.translatable("node.capture_zone.port.unlock_out"))
+                .build();
+        // 输入端口 - 接收解锁信号（来自前置区域的 unlock_out，支持多连线）
+        var unlockInPort = (PortModel) context.addInputPort("unlock_in", CapturePointTypes.UNLOCK_SIGNAL)
+                .withDisplayName(Component.translatable("node.capture_zone.port.unlock_in"))
+                .build();
+        unlockInPort.setPortCapacity(PortCapacity.MULTIPLE); // 允许多个前置区域连线到此端口
     }
 }
