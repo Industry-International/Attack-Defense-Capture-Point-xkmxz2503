@@ -109,6 +109,7 @@
   "node.capture_zone.port.zone_out": "Zone Signal",
   "node.capture_zone.port.required_zone": "Requires",
   "node.capture_zone.port.unlock_in": "Unlock Input",
+  "node.capture_zone.port.lock_in": "Lock Input",
 
   "gui.capture_point_graph.menu.create_point": "Create Point",
   "gui.capture_point_graph.menu.create_zone": "Create Zone",
@@ -235,6 +236,7 @@
   "node.capture_condition.display_name": "Condition",
   "node.capture_condition.port.point_target": "Point Target",
   "node.capture_condition.port.zone_target": "Zone Target",
+  "node.capture_condition.port.bool_in": "Bool Input",
   "node.capture_condition.port.true_out": "True",
   "node.capture_condition.port.false_out": "False",
   "node.capture_condition.option.condition_type": "Condition Type",

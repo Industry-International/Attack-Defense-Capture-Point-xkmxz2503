@@ -174,6 +174,14 @@ public class Attack_defense_capture_point_xkmxz {
             var access = ICaptureDataAccess.server(level);
             var manager = CaptureManager.get(level);
             String defender = access.getDefenderTeam();
+            var zoneActiveContestPoint = new java.util.HashMap<String, String>();
+
+            for (var point : access.getPoints().values()) {
+                String zoneName = access.findZoneForPoint(point.name());
+                if (zoneName != null && point.capturingTeam() != null) {
+                    zoneActiveContestPoint.putIfAbsent(zoneName, point.name());
+                }
+            }
 
             for (var entry : access.getPoints().values()) {
                 if (!entry.showRange()) continue;
@@ -186,8 +194,11 @@ public class Attack_defense_capture_point_xkmxz {
                 // ============================================================
                 String zoneName = access.findZoneForPoint(name);
                 boolean canAccess = zoneName == null || access.canAccessZone(zoneName);
+                boolean lockedByActiveContest = zoneName != null
+                        && zoneActiveContestPoint.containsKey(zoneName)
+                        && !name.equals(zoneActiveContestPoint.get(zoneName));
 
-                if (zoneName != null && !canAccess) {
+                if (zoneName != null && (!canAccess || lockedByActiveContest)) {
                     // 区域被锁定 → 强制中立（无人占领、无进度、无占领中）
                     if (entry.ownerTeam() != null || entry.captureProgress() > 0 || entry.capturingTeam() != null) {
                         access.setPointOwnerTeam(name, null);
@@ -271,6 +282,9 @@ public class Attack_defense_capture_point_xkmxz {
                         int newProgress = entry.captureProgress() - 2;
                         if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
                             access.setPointCapturingTeam(name, dominantTeam);
+                            if (zoneName != null) {
+                                zoneActiveContestPoint.putIfAbsent(zoneName, name);
+                            }
                         }
                         if (newProgress <= 0) {
                             // 清除完毕 → 记录上一任占领者，变为中立
@@ -288,6 +302,9 @@ public class Attack_defense_capture_point_xkmxz {
                     int newProgress = entry.captureProgress() + 2;
                     if (entry.capturingTeam() == null || !entry.capturingTeam().equals(dominantTeam)) {
                         access.setPointCapturingTeam(name, dominantTeam);
+                        if (zoneName != null) {
+                            zoneActiveContestPoint.putIfAbsent(zoneName, name);
+                        }
                     }
                     access.setPointCaptureProgress(name, newProgress);
 
