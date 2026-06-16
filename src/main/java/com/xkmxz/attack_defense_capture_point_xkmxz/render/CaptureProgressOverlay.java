@@ -5,6 +5,7 @@ import com.xkmxz.attack_defense_capture_point_xkmxz.Attack_defense_capture_point
 import com.xkmxz.attack_defense_capture_point_xkmxz.network.CaptureDataSyncPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -86,10 +87,11 @@ public class CaptureProgressOverlay {
         boolean isPlayerTeam = captured && player.getTeam() != null
                 && player.getTeam().getName().equals(data.ownerTeam());
 
-        String statusText;
+        Component statusText;
         ResourceLocation bgTexture;
         ResourceLocation fgTexture;
         int progressWidth;
+        String pointName = nearest.getKey();
 
         // 检测是否处于清除阶段（ownerTeam 存在但 captured=false，说明正在被清除）
         boolean isNeutralizing = !captured && data.ownerTeam() != null && data.capturingTeam() != null
@@ -103,24 +105,24 @@ public class CaptureProgressOverlay {
             bgTexture = GREEN_BG;
             fgTexture = GREEN;
             progressWidth = BAR_WIDTH;
-            statusText = "✓ " + nearest.getKey() + " (已占领)";
+            statusText = Component.translatable("hud.capture_progress.friendly_owned", pointName);
         } else if (captured) {
             // 已被敌方占领
             bgTexture = RED_BG;
             fgTexture = RED;
             progressWidth = BAR_WIDTH;
-            statusText = "✗ " + nearest.getKey() + " (敌方占领)";
+            statusText = Component.translatable("hud.capture_progress.enemy_owned", pointName);
         } else if (isNeutralizing) {
             // 正在被清除（进度从 100 下降到 0）
             boolean isOurTeam = player.getTeam() != null && player.getTeam().getName().equals(data.capturingTeam());
             if (isOurTeam) {
                 bgTexture = GREEN_BG;
                 fgTexture = GREEN;
-                statusText = "⟳ " + nearest.getKey() + " (清除中 " + data.captureProgress() + "%)";
+                statusText = Component.translatable("hud.capture_progress.friendly_neutralizing", pointName, data.captureProgress());
             } else {
                 bgTexture = RED_BG;
                 fgTexture = RED;
-                statusText = "⟳ " + nearest.getKey() + " (敌方清除中 " + data.captureProgress() + "%)";
+                statusText = Component.translatable("hud.capture_progress.enemy_neutralizing", pointName, data.captureProgress());
             }
             progressWidth = (int) ((double) data.captureProgress() / 100.0 * BAR_WIDTH);
         } else if (isRecovering) {
@@ -129,11 +131,11 @@ public class CaptureProgressOverlay {
             if (isOurTeam) {
                 bgTexture = GREEN_BG;
                 fgTexture = GREEN;
-                statusText = "↺ " + nearest.getKey() + " (恢复中 " + data.captureProgress() + "%)";
+                statusText = Component.translatable("hud.capture_progress.friendly_recovering", pointName, data.captureProgress());
             } else {
                 bgTexture = RED_BG;
                 fgTexture = RED;
-                statusText = "↺ " + nearest.getKey() + " (敌方恢复中 " + data.captureProgress() + "%)";
+                statusText = Component.translatable("hud.capture_progress.enemy_recovering", pointName, data.captureProgress());
             }
             progressWidth = (int) ((double) data.captureProgress() / 100.0 * BAR_WIDTH);
         } else if (data.capturingTeam() != null) {
@@ -142,11 +144,11 @@ public class CaptureProgressOverlay {
             if (isOurTeam) {
                 bgTexture = GREEN_BG;
                 fgTexture = GREEN;
-                statusText = "▶ " + nearest.getKey() + " (占领中 " + data.captureProgress() + "%)";
+                statusText = Component.translatable("hud.capture_progress.friendly_capturing", pointName, data.captureProgress());
             } else {
                 bgTexture = RED_BG;
                 fgTexture = RED;
-                statusText = "▶ " + nearest.getKey() + " (敌方占领中 " + data.captureProgress() + "%)";
+                statusText = Component.translatable("hud.capture_progress.enemy_capturing", pointName, data.captureProgress());
             }
             progressWidth = (int) ((double) data.captureProgress() / 100.0 * BAR_WIDTH);
         } else {
@@ -154,7 +156,7 @@ public class CaptureProgressOverlay {
             bgTexture = YELLOW_BG;
             fgTexture = YELLOW;
             progressWidth = 0;
-            statusText = "○ " + nearest.getKey() + " (空闲)";
+            statusText = Component.translatable("hud.capture_progress.idle", pointName);
         }
 
         // 绘制背景条
@@ -166,13 +168,13 @@ public class CaptureProgressOverlay {
         // 绘制文字
         guiGraphics.drawString(mc.font, statusText, x, BAR_Y - 11, 0xFFFFFF, false);
         // 队伍信息
-        String teamInfo = "";
+        Component teamInfo = null;
         if (data.capturingTeam() != null) {
-            teamInfo = "占领队伍: " + data.capturingTeam();
+            teamInfo = Component.translatable("hud.capture_progress.capturing_team", data.capturingTeam());
         } else if (data.ownerTeam() != null) {
-            teamInfo = "所属: " + data.ownerTeam();
+            teamInfo = Component.translatable("hud.capture_progress.owner_team", data.ownerTeam());
         }
-        if (!teamInfo.isEmpty()) {
+        if (teamInfo != null) {
             guiGraphics.drawString(mc.font, teamInfo, x, BAR_Y + 14, 0xCCCCCC, false);
         }
 

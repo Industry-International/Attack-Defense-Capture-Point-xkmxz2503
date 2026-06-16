@@ -8,25 +8,18 @@ import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IOptionDe
 import net.minecraft.network.chat.Component;
 
 /**
- * 条件节点 — 根据配置的条件类型评估据点/区域状态，输出布尔信号到 true_out 或 false_out。<br>
+ * 条件节点 — 评估输入（据点/区域/布尔信号）是否满足指定的条件。<br>
  * <br>
- * <b>信号流：</b><br>
- * 接收 POINT_SIGNAL（point_target）或 ZONE_SIGNAL（zone_target），<br>
- * 根据 condition_type 和 compare_value 评估，输出 BOOLEAN_SIGNAL。<br>
- * <br>
- * <b>支持的条件类型：</b>
+ * <b>新版设计（v2.0）：</b>
  * <ul>
- *   <li>{@code point_captured} — 据点已被占领</li>
- *   <li>{@code point_not_captured} — 据点未被占领</li>
- *   <li>{@code point_owner_team} — 据点 ownerTeam 匹配 compare_value</li>
- *   <li>{@code point_not_owner_team} — 据点 ownerTeam 不匹配 compare_value</li>
- *   <li>{@code point_capturing_team} — 据点 capturingTeam 匹配 compare_value</li>
- *   <li>{@code point_progress_ge} — 据点占领进度 ≥ compare_value</li>
- *   <li>{@code zone_captured} — 区域已被占领</li>
- *   <li>{@code zone_not_captured} — 区域未被占领</li>
- *   <li>{@code zone_owner_team} — 区域 ownerTeam 匹配 compare_value</li>
- *   <li>{@code zone_accessible} — 区域可访问</li>
+ *   <li><b>property</b> — 要检查的属性（如 captured, owner_team, progress）</li>
+ *   <li><b>operator</b> — 比较运算符（==, !=, >=, >, <=, <）</li>
+ *   <li><b>compare_value</b> — 要比较的值（如 true, 队伍名, 50 等）</li>
  * </ul>
+ * 评估逻辑：<code>输入值 [operator] 比较值</code> → true/false → true_out / false_out<br>
+ * <br>
+ * <b>条件嵌套：</b>新增 bool_in 端口（BOOLEAN_SIGNAL），可接收其他条件节点或逻辑门的输出，
+ * 实现条件链式组合，无需经过逻辑门节点。
  */
 public class CaptureConditionNode extends Node {
 
@@ -47,15 +40,21 @@ public class CaptureConditionNode extends Node {
     public void onDefineOptions(IOptionDefinitionContext context) {
         super.onDefineOptions(context);
 
-        // condition_type 条件类型
-        context.addOption("condition_type", ConditionType.class)
-                .withDefaultValue(ConditionType.POINT_CAPTURED)
-                .withDisplayName(Component.translatable("node.capture_condition.option.condition_type"))
+        // property 属性类型 — 要检查的输入属性
+        context.addOption("property", PropertyType.class)
+                .withDefaultValue(PropertyType.CAPTURED)
+                .withDisplayName(Component.translatable("node.capture_condition.option.property"))
                 .build();
 
-        // compare_value 比较值（用于 team 名称、进度阈值等）
+        // operator 比较运算符 — 如何比较
+        context.addOption("operator", OperatorType.class)
+                .withDefaultValue(OperatorType.EQUALS)
+                .withDisplayName(Component.translatable("node.capture_condition.option.operator"))
+                .build();
+
+        // compare_value 比较值 — 要比较的目标值
         context.addOption("compare_value", String.class)
-                .withDefaultValue("")
+                .withDefaultValue("true")
                 .withDisplayName(Component.translatable("node.capture_condition.option.compare_value"))
                 .build();
     }
@@ -74,6 +73,11 @@ public class CaptureConditionNode extends Node {
                 .withDisplayName(Component.translatable("node.capture_condition.port.zone_target"))
                 .build();
 
+        // 布尔信号输入（条件嵌套：接收其他条件的输出）
+        context.addInputPort("bool_in", CapturePointTypes.BOOLEAN_SIGNAL)
+                .withDisplayName(Component.translatable("node.capture_condition.port.bool_in"))
+                .build();
+
         // 布尔信号输出（true / false）
         context.addOutputPort("true_out", CapturePointTypes.BOOLEAN_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_condition.port.true_out"))
@@ -85,24 +89,21 @@ public class CaptureConditionNode extends Node {
     }
 
     // ================================================================
-    //  条件类型枚举 — 可扩展，不再硬编码开关
+    //  属性类型枚举 — 要检查的输入属性
     // ================================================================
 
-    public enum ConditionType {
-        POINT_CAPTURED("point_captured"),
-        POINT_NOT_CAPTURED("point_not_captured"),
-        POINT_OWNER_TEAM("point_owner_team"),
-        POINT_NOT_OWNER_TEAM("point_not_owner_team"),
-        POINT_CAPTURING_TEAM("point_capturing_team"),
-        POINT_PROGRESS_GE("point_progress_ge"),
+    public enum PropertyType {
+        CAPTURED("captured"),
+        OWNER_TEAM("owner_team"),
+        CAPTURING_TEAM("capturing_team"),
+        PROGRESS("progress"),
         ZONE_CAPTURED("zone_captured"),
-        ZONE_NOT_CAPTURED("zone_not_captured"),
         ZONE_OWNER_TEAM("zone_owner_team"),
         ZONE_ACCESSIBLE("zone_accessible");
 
         private final String id;
 
-        ConditionType(String id) {
+        PropertyType(String id) {
             this.id = id;
         }
 
@@ -111,7 +112,7 @@ public class CaptureConditionNode extends Node {
         }
 
         public String getTranslationKey() {
-            return "condition.capture_condition." + id;
+            return "property.capture_condition." + id;
         }
 
         public Component getDisplayName() {
@@ -120,15 +121,108 @@ public class CaptureConditionNode extends Node {
 
         @Override
         public String toString() {
+            // 返回本地化文本，用于 LDLib2 枚举下拉菜单显示
+            return getDisplayName().getString();
+        }
+
+        public String getSerializationId() {
             return id;
         }
 
-        public static ConditionType fromId(String id) {
-            if (id == null || id.isEmpty()) return POINT_CAPTURED;
-            for (var mode : values()) {
-                if (mode.id.equals(id)) return mode;
+        public static PropertyType fromId(String id) {
+            if (id == null || id.isEmpty()) return CAPTURED;
+            for (var p : values()) {
+                if (p.id.equals(id)) return p;
             }
-            return POINT_CAPTURED;
+            return CAPTURED;
+        }
+    }
+
+    // ================================================================
+    //  运算符类型枚举 — 比较方式
+    // ================================================================
+
+    public enum OperatorType {
+        EQUALS("=="),
+        NOT_EQUALS("!="),
+        GREATER_OR_EQUAL(">="),
+        GREATER(">"),
+        LESS_OR_EQUAL("<="),
+        LESS("<");
+
+        private final String symbol;
+
+        OperatorType(String symbol) {
+            this.symbol = symbol;
+        }
+
+        public String getSymbol() {
+            return symbol;
+        }
+
+        public String getTranslationKey() {
+            return "operator.capture_condition." + switch (symbol) {
+                case "==" -> "equals";
+                case "!=" -> "not_equals";
+                case ">=" -> "greater_or_equal";
+                case ">" -> "greater";
+                case "<=" -> "less_or_equal";
+                case "<" -> "less";
+                default -> "equals";
+            };
+        }
+
+        public Component getDisplayName() {
+            return Component.translatable(getTranslationKey());
+        }
+
+        @Override
+        public String toString() {
+            return getDisplayName().getString();
+        }
+
+        public String getSerializationId() {
+            return symbol;
+        }
+
+        /**
+         * 对两个值执行比较运算。
+         * @param actual 实际值（字符串形式）
+         * @param expected 比较目标值
+         * @return 比较结果
+         */
+        public boolean evaluate(String actual, String expected) {
+            if (actual == null || expected == null) return false;
+
+            return switch (this) {
+                case EQUALS -> actual.equals(expected);
+                case NOT_EQUALS -> !actual.equals(expected);
+
+                // 数值比较
+                case GREATER_OR_EQUAL, GREATER, LESS_OR_EQUAL, LESS -> {
+                    try {
+                        double a = Double.parseDouble(actual);
+                        double e = Double.parseDouble(expected);
+                        yield switch (this) {
+                            case GREATER_OR_EQUAL -> a >= e;
+                            case GREATER -> a > e;
+                            case LESS_OR_EQUAL -> a <= e;
+                            case LESS -> a < e;
+                            default -> false;
+                        };
+                    } catch (NumberFormatException ex) {
+                        yield false;
+                    }
+                }
+            };
+        }
+
+        public static OperatorType fromId(String id) {
+            if (id == null || id.isEmpty()) return EQUALS;
+            for (var o : values()) {
+                if (o.symbol.equals(id)) return o;
+            }
+            return EQUALS;
         }
     }
 }

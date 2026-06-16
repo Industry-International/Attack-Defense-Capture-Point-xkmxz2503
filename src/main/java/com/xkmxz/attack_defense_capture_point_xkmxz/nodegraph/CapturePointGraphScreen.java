@@ -208,7 +208,7 @@ public class CapturePointGraphScreen {
     //  保存节点图到 CaptureManager (快照模式 + 版本检测)
     // ================================================================
 
-    /** 从当前节点模型中读取选项值 */
+    /** 从当前节点模型中读取选项值（使用序列化ID而非toString） */
     private static String getOptionString(NodeModel nm, String id) {
         if (nm instanceof INodeWithOptions opts) {
             var opt = opts.getNodeOptionById(id);
@@ -216,7 +216,13 @@ public class CapturePointGraphScreen {
                 var port = nodeOpt.getPortModel();
                 if (port instanceof IFieldValueConfigurable configurable) {
                     var v = configurable.getValue();
-                    return v != null ? v.toString() : "";
+                    if (v == null) return "";
+                    // 枚举类型使用 getSerializationId() 确保序列化的是原始ID而非本地化文本
+                    if (v instanceof CaptureConditionNode.PropertyType pt) return pt.getSerializationId();
+                    if (v instanceof CaptureConditionNode.OperatorType ot) return ot.getSerializationId();
+                    if (v instanceof LogicGateNode.GateType gt) return gt.getSerializationId();
+                    if (v instanceof CaptureActionNode.ActionType at) return at.getSerializationId();
+                    return v.toString();
                 }
             }
         }
@@ -428,9 +434,11 @@ public class CapturePointGraphScreen {
         for (var entry : conditionModels.entrySet()) {
             String condName = entry.getKey();
             var nm = entry.getValue();
-            String conditionTypeStr = getOptionString(nm, "condition_type");
+            String propertyStr = getOptionString(nm, "property");
+            String operatorStr = getOptionString(nm, "operator");
             String compareValue = getOptionString(nm, "compare_value");
-            var conditionType = CaptureConditionNode.ConditionType.fromId(conditionTypeStr);
+            var property = CaptureConditionNode.PropertyType.fromId(propertyStr);
+            var operator = CaptureConditionNode.OperatorType.fromId(operatorStr);
 
             List<String> inputPoints = conditionInputPoints.get(condName);
             if (inputPoints == null || inputPoints.isEmpty()) continue;
@@ -439,13 +447,13 @@ public class CapturePointGraphScreen {
                 var pointEntry = newPoints.get(pointName);
                 if (pointEntry == null) continue;
 
-                boolean result = evaluateNewCondition(conditionType, compareValue, pointEntry, null);
+                boolean result = evaluateNewCondition(property, operator, compareValue, pointEntry, null);
                 String outputPort = result ? "true_out" : "false_out";
 
                 // 查找条件节点的输出连线 → 区域/动作/逻辑门
                 routeConditionOutput(condName, outputPort, pointName,
                         conditionRoutedPoints, conditionModels, gateModels,
-                        zoneModels, newPoints, graph, conditionType, compareValue);
+                        zoneModels, newPoints, graph, property, operator, compareValue);
             }
         }
 
@@ -524,7 +532,89 @@ public class CapturePointGraphScreen {
             }
 
             newZones.put(name, new CaptureManager.ZoneEntry(
-                    name, cpList, reqZone, zoneCaptured, null, new ArrayList<>()));
+                    name, cpList, reqZone, zoneCaptured, null, new ArrayList<>(), false));
+        }
+
+        // ---- Phase 6: 条件/逻辑门→unlock_in 解锁信号路由 ----
+        // 条件节点的 true_out/false_out → 区域节点 unlock_in 端口
+        // 条件评估为 true 时连接 unlock_in → 区域保持 unlocked (locked=false)
+        // 条件评估为 false 时连接 unlock_in → 区域被锁定 (locked=true)
+        // 多个条件连接到同一区域的 unlock_in 时：任意一个 false → 锁定
+        var unlockLockedZones = new LinkedHashSet<String>(); // 被条件锁定的区域
+        var unlockUnlockedZones = new LinkedHashSet<String>(); // 被条件解锁的区域
+
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+
+                // 条件节点 true_out/false_out → 区域 unlock_in
+                if (conditionModels.containsKey(fromName) && hasInputPort(toNm, "unlock_in")) {
+                    String portName = fromPort.getUniqueName();
+                    if (portName == null) continue;
+
+                    List<String> inputPoints = conditionInputPoints.get(fromName);
+                    if (inputPoints == null || inputPoints.isEmpty()) continue;
+
+                    for (String pointName : inputPoints) {
+                        var pointEntry = newPoints.get(pointName);
+                        if (pointEntry == null) continue;
+
+                        String propStr = getOptionStringStatic(fromNm, "property");
+                        String opStr = getOptionStringStatic(fromNm, "operator");
+                        String compareValue = getOptionStringStatic(fromNm, "compare_value");
+                        var prop = CaptureConditionNode.PropertyType.fromId(propStr);
+                        var op = CaptureConditionNode.OperatorType.fromId(opStr);
+                        boolean result = evaluateNewCondition(prop, op, compareValue, pointEntry, newZones.get(toName));
+
+                        if (portName.equals("true_out") && result) {
+                            unlockUnlockedZones.add(toName);
+                        } else if (portName.equals("false_out") && result) {
+                            unlockLockedZones.add(toName);
+                        } else if (portName.equals("true_out")) {
+                            // true_out 但条件为 false → 锁定
+                            unlockLockedZones.add(toName);
+                        } else if (portName.equals("false_out")) {
+                            // false_out 但条件为 false → 解锁
+                            unlockUnlockedZones.add(toName);
+                        }
+                    }
+                }
+                // 逻辑门 result → 区域 unlock_in
+                else if (gateModels.containsKey(fromName) && hasInputPort(toNm, "unlock_in")) {
+                    String portName = fromPort.getUniqueName();
+                    if (portName == null || !portName.equals("result")) continue;
+
+                    // 简化的门评估：查找条件节点输入到此门的所有路径
+                    boolean gateResult = evaluateGateSimple(fromName, conditionModels, gateModels,
+                            conditionInputPoints, newPoints, graph);
+
+                    if (gateResult) {
+                        unlockUnlockedZones.add(toName);
+                    } else {
+                        unlockLockedZones.add(toName);
+                    }
+                }
+            }
+        }
+
+        // 应用锁定状态：如果同时连接到 unlock 和 lock，则 lock 优先
+        for (var zoneName : newZones.keySet()) {
+            boolean isLocked = unlockLockedZones.contains(zoneName);
+            if (isLocked) {
+                var existing = newZones.get(zoneName);
+                newZones.put(zoneName, existing.withLocked(true));
+            } else if (unlockUnlockedZones.contains(zoneName)) {
+                var existing = newZones.get(zoneName);
+                newZones.put(zoneName, existing.withLocked(false));
+            }
         }
 
         // 解锁依赖已经不再通过 save-time 连线解析管理，
@@ -548,45 +638,97 @@ public class CapturePointGraphScreen {
     }
 
     /**
-     * 评估新版条件节点的条件是否满足。
-     * 使用 CaptureConditionNode.ConditionType 枚举，支持所有条件类型。
+     * 从据点/区域实体中获取指定属性的字符串值。
      */
-    private static boolean evaluateNewCondition(CaptureConditionNode.ConditionType conditionType,
-                                                  String compareValue,
-                                                  CaptureManager.CapturePointEntry pointEntry,
-                                                  CaptureManager.ZoneEntry zoneEntry) {
-        if (conditionType == null) return false;
-        String cv = compareValue != null ? compareValue : "";
-
-        return switch (conditionType) {
-            case POINT_CAPTURED -> pointEntry != null && pointEntry.captured();
-            case POINT_NOT_CAPTURED -> pointEntry != null && !pointEntry.captured();
-            case POINT_OWNER_TEAM -> {
-                if (pointEntry == null || cv.isEmpty()) yield false;
-                yield cv.equals(pointEntry.ownerTeam());
-            }
-            case POINT_NOT_OWNER_TEAM -> {
-                if (pointEntry == null || cv.isEmpty()) yield true;
-                yield !cv.equals(pointEntry.ownerTeam());
-            }
-            case POINT_CAPTURING_TEAM -> {
-                if (pointEntry == null || cv.isEmpty()) yield pointEntry.capturingTeam() != null;
-                yield cv.equals(pointEntry.capturingTeam());
-            }
-            case POINT_PROGRESS_GE -> {
-                if (pointEntry == null) yield false;
-                int threshold;
-                try { threshold = Integer.parseInt(cv); } catch (NumberFormatException e) { threshold = 50; }
-                yield pointEntry.captureProgress() >= threshold;
-            }
-            case ZONE_CAPTURED -> zoneEntry != null && zoneEntry.captured();
-            case ZONE_NOT_CAPTURED -> zoneEntry != null && !zoneEntry.captured();
-            case ZONE_OWNER_TEAM -> {
-                if (zoneEntry == null || cv.isEmpty()) yield false;
-                yield cv.equals(zoneEntry.ownerTeam());
-            }
-            case ZONE_ACCESSIBLE -> zoneEntry != null; // 简化：区域存在即可访问
+    private static String getPropertyValue(CaptureConditionNode.PropertyType property,
+                                            @Nullable CaptureManager.CapturePointEntry pointEntry,
+                                            @Nullable CaptureManager.ZoneEntry zoneEntry) {
+        return switch (property) {
+            case CAPTURED -> String.valueOf(pointEntry != null && pointEntry.captured());
+            case OWNER_TEAM -> pointEntry != null && pointEntry.ownerTeam() != null ? pointEntry.ownerTeam() : "";
+            case CAPTURING_TEAM -> pointEntry != null && pointEntry.capturingTeam() != null ? pointEntry.capturingTeam() : "";
+            case PROGRESS -> String.valueOf(pointEntry != null ? pointEntry.captureProgress() : 0);
+            case ZONE_CAPTURED -> String.valueOf(zoneEntry != null && zoneEntry.captured());
+            case ZONE_OWNER_TEAM -> zoneEntry != null && zoneEntry.ownerTeam() != null ? zoneEntry.ownerTeam() : "";
+            case ZONE_ACCESSIBLE -> String.valueOf(zoneEntry != null); // 简化：区域存在即可访问
         };
+    }
+
+    /**
+     * 评估新版条件节点：提取输入值 → 运算符比较。
+     * 逻辑：输入值 [operator] 比较值
+     */
+    private static boolean evaluateNewCondition(CaptureConditionNode.PropertyType property,
+                                                  CaptureConditionNode.OperatorType operator,
+                                                  String compareValue,
+                                                  @Nullable CaptureManager.CapturePointEntry pointEntry,
+                                                  @Nullable CaptureManager.ZoneEntry zoneEntry) {
+        if (property == null || operator == null) return false;
+        String actualValue = getPropertyValue(property, pointEntry, zoneEntry);
+        String cv = compareValue != null ? compareValue : "";
+        return operator.evaluate(actualValue, cv);
+    }
+
+    /**
+     * 简化版逻辑门评估：仅评估从条件节点直接输入到此门的布尔值。
+     * 用于 unlock_in 路由中的门评估。
+     */
+    private static boolean evaluateGateSimple(String gateName,
+                                               Map<String, NodeModel> conditionModels,
+                                               Map<String, NodeModel> gateModels,
+                                               Map<String, List<String>> conditionInputPoints,
+                                               Map<String, CaptureManager.CapturePointEntry> newPoints,
+                                               CapturePointGraph graph) {
+        var nm = gateModels.get(gateName);
+        if (nm == null) return false;
+        String gateTypeStr = getOptionStringStatic(nm, "gate_type");
+        var gateType = LogicGateNode.GateType.fromId(gateTypeStr);
+
+        boolean inputA = false, inputB = false;
+        boolean hasA = false, hasB = false;
+
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+                if (!toName.equals(gateName)) continue;
+                String toPortName = toPort.getUniqueName();
+                if (toPortName == null) continue;
+
+                if (conditionModels.containsKey(fromName)) {
+                    String propStr = getOptionStringStatic(fromNm, "property");
+                    String opStr = getOptionStringStatic(fromNm, "operator");
+                    String cmpVal = getOptionStringStatic(fromNm, "compare_value");
+                    var prop = CaptureConditionNode.PropertyType.fromId(propStr);
+                    var op = CaptureConditionNode.OperatorType.fromId(opStr);
+                    List<String> pts = conditionInputPoints.get(fromName);
+                    boolean condResult = false;
+                    if (pts != null && !pts.isEmpty()) {
+                        var pe = newPoints.get(pts.get(0));
+                        condResult = evaluateNewCondition(prop, op, cmpVal, pe, null);
+                    }
+                    if ("in_a".equals(toPortName)) { inputA = condResult; hasA = true; }
+                    else if ("in_b".equals(toPortName)) { inputB = condResult; hasB = true; }
+                } else if (gateModels.containsKey(fromName)) {
+                    boolean subResult = evaluateGateSimple(fromName, conditionModels, gateModels,
+                            conditionInputPoints, newPoints, graph);
+                    if ("in_a".equals(toPortName)) { inputA = subResult; hasA = true; }
+                    else if ("in_b".equals(toPortName)) { inputB = subResult; hasB = true; }
+                } else if (hasOutputPort(fromNm, "value")) {
+                    boolean constVal = getOptionBoolStatic(fromNm, "constant_value");
+                    if ("in_a".equals(toPortName)) { inputA = constVal; hasA = true; }
+                    else if ("in_b".equals(toPortName)) { inputB = constVal; hasB = true; }
+                }
+            }
+        }
+        return gateType.evaluate(inputA, gateType == LogicGateNode.GateType.NOT ? false : inputB);
     }
 
     /**
@@ -625,7 +767,8 @@ public class CapturePointGraphScreen {
                                                Map<String, NodeModel> zoneModels,
                                                Map<String, CaptureManager.CapturePointEntry> newPoints,
                                                CapturePointGraph graph,
-                                               CaptureConditionNode.ConditionType conditionType,
+                                               CaptureConditionNode.PropertyType property,
+                                               CaptureConditionNode.OperatorType operator,
                                                String compareValue) {
         // 遍历连线，查找从 sourceNodeName.sourceOutputPort 出发的连线
         for (var element : graph.graphModel.getGraphElementModels()) {
@@ -654,7 +797,7 @@ public class CapturePointGraphScreen {
                     boolean gateResult = evaluateGateRecursive(toName, pointName,
                             conditionModels, gateModels, zoneModels,
                             newPoints, conditionRoutedPoints, graph,
-                            conditionType, compareValue);
+                            property, operator, compareValue);
                 }
             }
         }
@@ -670,7 +813,8 @@ public class CapturePointGraphScreen {
                                                    Map<String, CaptureManager.CapturePointEntry> newPoints,
                                                    Map<String, List<String>> conditionRoutedPoints,
                                                    CapturePointGraph graph,
-                                                   CaptureConditionNode.ConditionType conditionType,
+                                                   CaptureConditionNode.PropertyType property,
+                                                   CaptureConditionNode.OperatorType operator,
                                                    String compareValue) {
         var nm = gateModels.get(gateName);
         if (nm == null) return false;
@@ -702,11 +846,13 @@ public class CapturePointGraphScreen {
 
                 // 上游是条件节点
                 if (conditionModels.containsKey(fromName)) {
-                    String condType = getOptionStringStatic(fromNm, "condition_type");
+                    String propStr = getOptionStringStatic(fromNm, "property");
+                    String opStr = getOptionStringStatic(fromNm, "operator");
                     String cmpVal = getOptionStringStatic(fromNm, "compare_value");
-                    var ct = CaptureConditionNode.ConditionType.fromId(condType);
+                    var prop = CaptureConditionNode.PropertyType.fromId(propStr);
+                    var op = CaptureConditionNode.OperatorType.fromId(opStr);
                     var pointEntry = newPoints.get(pointName);
-                    boolean result = evaluateNewCondition(ct, cmpVal, pointEntry, null);
+                    boolean result = evaluateNewCondition(prop, op, cmpVal, pointEntry, null);
 
                     if ("in_a".equals(toPortName)) { inputA = result; hasA = true; }
                     else if ("in_b".equals(toPortName)) { inputB = result; hasB = true; }
@@ -716,7 +862,7 @@ public class CapturePointGraphScreen {
                     boolean subResult = evaluateGateRecursive(fromName, pointName,
                             conditionModels, gateModels, zoneModels,
                             newPoints, conditionRoutedPoints, graph,
-                            conditionType, compareValue);
+                            property, operator, compareValue);
                     if ("in_a".equals(toPortName)) { inputA = subResult; hasA = true; }
                     else if ("in_b".equals(toPortName)) { inputB = subResult; hasB = true; }
                 }
@@ -758,7 +904,7 @@ public class CapturePointGraphScreen {
                     evaluateGateRecursive(toName, pointName,
                             conditionModels, gateModels, zoneModels,
                             newPoints, conditionRoutedPoints, graph,
-                            conditionType, compareValue);
+                            property, operator, compareValue);
                 }
             }
         }
@@ -777,7 +923,12 @@ public class CapturePointGraphScreen {
                     var port = nodeOpt.getPortModel();
                     if (port instanceof com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable cfg) {
                         var v = cfg.getValue();
-                        return v != null ? v.toString() : "";
+                        if (v == null) return "";
+                        if (v instanceof CaptureConditionNode.PropertyType pt) return pt.getSerializationId();
+                        if (v instanceof CaptureConditionNode.OperatorType ot) return ot.getSerializationId();
+                        if (v instanceof LogicGateNode.GateType gt) return gt.getSerializationId();
+                        if (v instanceof CaptureActionNode.ActionType at) return at.getSerializationId();
+                        return v.toString();
                     }
                 }
             }
@@ -802,7 +953,7 @@ public class CapturePointGraphScreen {
         var mgr = getCaptureManager();
         if (mgr == null) {
             ToastNotification.push(ToastNotification.Type.ERROR,
-                    Component.literal("无法访问服务端数据，请使用命令 /capturepoint setcaptured 操作"));
+                    Component.translatable("toast.capture_point_graph.no_server_access"));
             return;
         }
 
@@ -812,11 +963,11 @@ public class CapturePointGraphScreen {
             var newPoints = snapshot.getKey();
             var newZones = snapshot.getValue();
 
-            // 收集所有节点的布局信息 + 判断器节点数据 + 通用节点选项 + 视角状态
+            // 收集所有节点的布局信息 + 判断器节点数据 + 通用节点选项 + 连线数据 + 视角状态
             var layouts = new LinkedHashMap<String, CaptureManager.NodeLayout>();
             var decisions = new LinkedHashMap<String, CaptureManager.DecisionNodeData>();
             var nodeOpts = new LinkedHashMap<String, Map<String, String>>();
-            var wires = collectGraphWires();
+            var wireData = new ArrayList<CaptureManager.WireData>();
             // 获取当前视角状态
             CaptureManager.ViewState currentViewState = null;
             try {
@@ -857,12 +1008,43 @@ public class CapturePointGraphScreen {
                             var port = opt.getPortModel();
                             if (port instanceof IFieldValueConfigurable cfg) {
                                 var val = cfg.getValue();
-                                optMap.put(optId, val != null ? val.toString() : "");
+                                String serialized;
+                                if (val == null) {
+                                    serialized = "";
+                                } else if (val instanceof CaptureConditionNode.PropertyType pt) {
+                                    serialized = pt.getSerializationId();
+                                } else if (val instanceof CaptureConditionNode.OperatorType ot) {
+                                    serialized = ot.getSerializationId();
+                                } else if (val instanceof LogicGateNode.GateType gt) {
+                                    serialized = gt.getSerializationId();
+                                } else if (val instanceof CaptureActionNode.ActionType at) {
+                                    serialized = at.getSerializationId();
+                                } else {
+                                    serialized = val.toString();
+                                }
+                                optMap.put(optId, serialized);
                             }
                         }
                     }
                     if (!optMap.isEmpty()) {
                         nodeOpts.put(name, optMap);
+                    }
+                } else if (element instanceof com.lowdragmc.lowdraglib2.nodegraphtookit.model.wire.WireModel wire) {
+                    // 收集连线数据
+                    var fromPort = wire.getFromPort();
+                    var toPort = wire.getToPort();
+                    if (fromPort != null && toPort != null) {
+                        var fromNode = fromPort.getNodeModel();
+                        var toNode = toPort.getNodeModel();
+                        if (fromNode instanceof NodeModel fromNm && toNode instanceof NodeModel toNm) {
+                            String fromName = fromNm.getName();
+                            String toName = toNm.getName();
+                            String fromPortName = fromPort.getUniqueName();
+                            String toPortName = toPort.getUniqueName();
+                            if (fromName != null && toName != null && fromPortName != null && toPortName != null) {
+                                wireData.add(new CaptureManager.WireData(fromName, fromPortName, toName, toPortName));
+                            }
+                        }
                     }
                 }
             }
@@ -872,13 +1054,13 @@ public class CapturePointGraphScreen {
                 long currentVersion = mgr.getVersion();
                 if (currentVersion != snapshotVersion) {
                     // 数据已被外部修改（命令/方块），弹出确认对话框
-                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions, nodeOpts, wires, currentViewState);
+                    openConflictDialog(mgr, newPoints, newZones, layouts, decisions, nodeOpts, wireData, currentViewState);
                     return;
                 }
             }
 
-            // 无冲突或非编辑模式：直接应用（含布局 + 判断器 + 节点选项 + 视角状态）
-            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wires, currentViewState);
+            // 无冲突或非编辑模式：直接应用（含布局 + 判断器 + 节点选项 + 连线数据 + 视角状态）
+            mgr.applyGraphSnapshotWithLayoutAndWires(newPoints, newZones, layouts, decisions, nodeOpts, wireData, currentViewState);
 
             // 立即同步所有已加载方块实体的渲染缓存
             var serverLevel = getServerLevel();
@@ -892,7 +1074,7 @@ public class CapturePointGraphScreen {
         } catch (Exception e) {
             LOGGER.error("Save graph failed: {}", e.getMessage(), e);
             ToastNotification.push(ToastNotification.Type.ERROR,
-                    Component.literal("Save failed: " + e.getMessage()));
+                    Component.translatable("toast.capture_point_graph.save_failed", e.getMessage()));
         }
     }
 
@@ -940,10 +1122,13 @@ public class CapturePointGraphScreen {
                                      Map<String, CaptureManager.NodeLayout> layouts,
                                      Map<String, CaptureManager.DecisionNodeData> decisions,
                                      Map<String, Map<String, String>> nodeOpts,
-                                     List<CaptureManager.GraphWireData> wires,
+                                     List<CaptureManager.WireData> wireData,
                                      @Nullable CaptureManager.ViewState viewState) {
         var mc = mc();
-        int dw = 340, dh = 130;
+        int scw = mc.getWindow().getGuiScaledWidth();
+        int sch = mc.getWindow().getGuiScaledHeight();
+        int dw = Math.min(scw * 50 / 100, 340);
+        int dh = Math.min(130, (int)(sch * 0.8));
 
         var root = CapturePointTheme.panel()
                 .layout(l -> l.width(dw).height(dh).paddingAll(12).gapAll(8)
@@ -970,9 +1155,9 @@ public class CapturePointGraphScreen {
         overwriteBtn.setOnClick(e -> {
             var overwriteMgr = getCaptureManager();
             if (overwriteMgr != null) {
-                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wires, viewState);
+                overwriteMgr.applyGraphSnapshotWithLayoutAndWires(newPoints, newZones, layouts, decisions, nodeOpts, wireData, viewState);
             } else {
-                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wires, viewState);
+                captureManager.applyGraphSnapshotWithLayoutAndWires(newPoints, newZones, layouts, decisions, nodeOpts, wireData, viewState);
             }
 
             var sl = getServerLevel();
@@ -1046,6 +1231,8 @@ public class CapturePointGraphScreen {
             var savedLayouts = mgr.getNodeLayouts();
             // 获取保存的通用节点选项
             var savedNodeOptions = mgr.getNodeOptions();
+            // 获取保存的连线数据
+            var savedWires = mgr.getWires();
 
             var pointModels = new LinkedHashMap<String, NodeModel>();
             var zoneModels = new LinkedHashMap<String, NodeModel>();
@@ -1103,7 +1290,7 @@ public class CapturePointGraphScreen {
 
                 com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node logicNode = null;
                 if (opts != null) {
-                    if (opts.containsKey("condition_type")) {
+                    if (opts.containsKey("property") || opts.containsKey("condition_type")) {
                         logicNode = new CaptureConditionNode();
                     } else if (opts.containsKey("gate_type")) {
                         logicNode = new LogicGateNode();
@@ -1161,6 +1348,14 @@ public class CapturePointGraphScreen {
                 }
             }
 
+            // 恢复保存的连线数据（所有类型的连线，包括逻辑节点间连线）
+            if (savedWires != null && !savedWires.isEmpty()) {
+                for (var wireData : savedWires) {
+                    restoreWire(wireData.fromNode(), wireData.fromPort(),
+                            wireData.toNode(), wireData.toPort());
+                }
+            }
+
             // 恢复通用节点选项（条件/逻辑门/动作/常量的选项值）
             for (var element : graph.graphModel.getGraphElementModels()) {
                 if (element instanceof NodeModel nm) {
@@ -1186,6 +1381,76 @@ public class CapturePointGraphScreen {
     }
 
     /**
+     * 从保存的连线数据中恢复一条连线。
+     * 在 graphModel 中查找对应的节点和端口，然后创建连线。
+     */
+    private void restoreWire(String fromNodeName, String fromPortName,
+                              String toNodeName, String toPortName) {
+        try {
+            for (var element : graph.graphModel.getGraphElementModels()) {
+                if (element instanceof NodeModel nm) {
+                    String name = nm.getName();
+                    if (name == null) continue;
+                    if (name.equals(fromNodeName)) {
+                        var fromPort = nm.getOutputsById().get(fromPortName);
+                        var toNode = findNodeModel(toNodeName);
+                        if (fromPort != null && toNode != null) {
+                            var toPort = toNode.getInputsById().get(toPortName);
+                            if (toPort != null) {
+                                graph.graphModel.createWire(fromPort, toPort);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to restore wire {}:{} -> {}:{}: {}",
+                    fromNodeName, fromPortName, toNodeName, toPortName, e.getMessage());
+        }
+    }
+
+    /** 按名称查找节点模型 */
+    @Nullable
+    private NodeModel findNodeModel(String name) {
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof NodeModel nm) {
+                if (name.equals(nm.getName())) return nm;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 查找连接到此条件节点的第一个据点名称（通过 point_target 连线）。
+     * 用于 refreshNodeTitles 中的实时条件评估。
+     */
+    @Nullable
+    private String findConnectedPointName(NodeModel conditionNm) {
+        String condName = conditionNm.getName();
+        if (condName == null) return null;
+        for (var element : graph.graphModel.getGraphElementModels()) {
+            if (element instanceof WireModel wire) {
+                var fromPort = wire.getFromPort();
+                var toPort = wire.getToPort();
+                if (fromPort == null || toPort == null) continue;
+                var fromNode = fromPort.getNodeModel();
+                var toNode = toPort.getNodeModel();
+                if (!(fromNode instanceof NodeModel fromNm) || !(toNode instanceof NodeModel toNm)) continue;
+                String fromName = fromNm.getName();
+                String toName = toNm.getName();
+                if (fromName == null || toName == null) continue;
+                // 据点的 point_signal → 条件节点的 point_target
+                if (toName.equals(condName) && hasInputPort(toNm, "point_target")
+                        && hasOutputPort(fromNm, "point_signal")) {
+                    return fromName;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * 将字符串选项值转换为正确的类型（枚举/布尔/数值），<br>
      * 避免直接将字符串传给 IFieldValueConfigurable.setValue() 导致 ClassCastException。
      */
@@ -1195,8 +1460,10 @@ public class CapturePointGraphScreen {
 
         // 枚举类型：必须使用枚举实例，不能传字符串
         switch (optId) {
-            case "condition_type":
-                return CaptureConditionNode.ConditionType.fromId(optVal);
+            case "property":
+                return CaptureConditionNode.PropertyType.fromId(optVal);
+            case "operator":
+                return CaptureConditionNode.OperatorType.fromId(optVal);
             case "gate_type":
                 return LogicGateNode.GateType.fromId(optVal);
             case "action_type":
@@ -1206,6 +1473,11 @@ public class CapturePointGraphScreen {
         // 布尔值
         if ("true".equalsIgnoreCase(optVal) || "false".equalsIgnoreCase(optVal)) {
             return Boolean.parseBoolean(optVal);
+        }
+
+        // 字符串类型的选项ID（不进行数值转换，防止 Integer→String 类型冲突）
+        if (isStringOption(optId)) {
+            return optVal;
         }
 
         // 尝试数值
@@ -1218,6 +1490,17 @@ public class CapturePointGraphScreen {
 
         // 字符串（如 target_name, compare_value 等）
         return optVal;
+    }
+
+    /** 已知为字符串类型的选项 ID 列表 */
+    private static boolean isStringOption(String optId) {
+        return switch (optId) {
+            case "compare_value", "target_name", "action_value",
+                 "position", "owner_team", "required_zone",
+                 "points", "description", "edit_points",
+                 "zone_progress" -> true;
+            default -> false;
+        };
     }
 
     // ================================================================
@@ -1265,23 +1548,83 @@ public class CapturePointGraphScreen {
                             // 旧版判断器节点（兼容）：显示名称
                             nm.setTitle(Component.literal(name + " [旧判断器]"));
                         } else if (hasInputPort(nm, "point_target") || hasInputPort(nm, "zone_target")) {
-                            // 条件节点
-                            String condType = getOptionString(nm, "condition_type");
-                            if (condType == null || condType.isEmpty()) condType = "point_captured";
-                            var ct = CaptureConditionNode.ConditionType.fromId(condType);
+                            // 条件节点：显示属性 + 运算符 + 比较值 + 实时评估布尔结果
+                            String propStr = getOptionString(nm, "property");
+                            String opStr = getOptionString(nm, "operator");
                             String cmpVal = getOptionString(nm, "compare_value");
-                            String cmpDisplay = cmpVal != null && !cmpVal.isEmpty() ? "=" + cmpVal : "";
-                            nm.setTitle(Component.literal(name + " [? ")
-                                    .append(ct.getDisplayName())
-                                    .append(Component.literal(cmpDisplay + "]")));
+                            var prop = CaptureConditionNode.PropertyType.fromId(propStr);
+                            var op = CaptureConditionNode.OperatorType.fromId(opStr);
+                            String propDisplay = prop.getDisplayName().getString();
+                            String opDisplay = op.getDisplayName().getString();
+                            String cmpDisplay = cmpVal != null && !cmpVal.isEmpty() ? " " + cmpVal : "";
+
+                            // 尝试实时评估条件
+                            String statusIcon = "?";
+                            if (!editMode) {
+                                try {
+                                    String pointName = findConnectedPointName(nm);
+                                    if (pointName != null && points.containsKey(pointName)) {
+                                        var pEntry = points.get(pointName);
+                                        boolean evalResult = evaluateNewCondition(prop, op, cmpVal, pEntry, null);
+                                        statusIcon = evalResult ? "1" : "0"; // 统一逻辑：1=true, 0=false
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+
+                            nm.setTitle(Component.literal(name + " [")
+                                    .append(Component.literal(propDisplay + " " + opDisplay + cmpDisplay + " → " + statusIcon + "]")));
                         } else if (hasInputPort(nm, "in_a")) {
-                            // 逻辑门节点
-                            String gateType = getOptionString(nm, "gate_type");
-                            if (gateType == null || gateType.isEmpty()) gateType = "and";
-                            var gt = LogicGateNode.GateType.fromId(gateType);
+                            // 逻辑门节点：显示门类型 + 当前评估结果
+                            String gtStr = getOptionString(nm, "gate_type");
+                            if (gtStr == null || gtStr.isEmpty()) gtStr = "and";
+                            var gt = LogicGateNode.GateType.fromId(gtStr);
+
+                            // 尝试评估门的当前布尔值
+                            String gateStatus = "?";
+                            if (!editMode) {
+                                try {
+                                    boolean inputA = false, inputB = false;
+                                    // 从连线收集输入
+                                    for (var wireEl : graph.graphModel.getGraphElementModels()) {
+                                        if (wireEl instanceof WireModel wire) {
+                                            var fPort = wire.getFromPort();
+                                            var tPort = wire.getToPort();
+                                            if (fPort == null || tPort == null) continue;
+                                            var fNode = fPort.getNodeModel();
+                                            var tNode = tPort.getNodeModel();
+                                            if (!(fNode instanceof NodeModel fNm) || !(tNode instanceof NodeModel tNm)) continue;
+                                            String fName = fNm.getName();
+                                            String tName = tNm.getName();
+                                            if (fName == null || tName == null) continue;
+                                            if (!tName.equals(name)) continue;
+                                            String tPortName = tPort.getUniqueName();
+                                            if (tPortName == null) continue;
+                                            // 上游是条件节点
+                                            if (hasInputPort(fNm, "point_target") || hasInputPort(fNm, "zone_target")) {
+                                                String propStr2 = getOptionStringStatic(fNm, "property");
+                                                String opStr2 = getOptionStringStatic(fNm, "operator");
+                                                String cv2 = getOptionStringStatic(fNm, "compare_value");
+                                                var prop2 = CaptureConditionNode.PropertyType.fromId(propStr2);
+                                                var op2 = CaptureConditionNode.OperatorType.fromId(opStr2);
+                                                String connPt = findConnectedPointName(fNm);
+                                                var pEntry2 = connPt != null ? points.get(connPt) : null;
+                                                boolean r = evaluateNewCondition(prop2, op2, cv2, pEntry2, null);
+                                                if ("in_a".equals(tPortName)) inputA = r;
+                                                else if ("in_b".equals(tPortName)) inputB = r;
+                                            } else if (hasOutputPort(fNm, "value")) {
+                                                boolean cv = getOptionBoolStatic(fNm, "constant_value");
+                                                if ("in_a".equals(tPortName)) inputA = cv;
+                                                else if ("in_b".equals(tPortName)) inputB = cv;
+                                            }
+                                        }
+                                    }
+                                    gateStatus = gt.evaluate(inputA, gt == LogicGateNode.GateType.NOT ? false : inputB) ? "1" : "0";
+                                } catch (Exception ignored) {}
+                            }
+
                             nm.setTitle(Component.literal(name + " [")
                                     .append(gt.getDisplayName())
-                                    .append(Component.literal("]")));
+                                    .append(Component.literal(" → " + gateStatus + "]")));
                         } else if (hasInputPort(nm, "trigger")) {
                             // 动作节点
                             String actionType = getOptionString(nm, "action_type");
@@ -1299,7 +1642,7 @@ public class CapturePointGraphScreen {
                                     .append(Component.literal(String.valueOf(constVal)))
                                     .append(Component.literal("]")));
                         } else if (hasOutputPort(nm, "zone_out") || hasInputPort(nm, "point_in")) {
-                            // 区域节点：显示名称 + 占领状态 + 点数
+                            // 区域节点：显示名称 + 占领状态 + 点数 + 锁定状态
                             var entry = zones.get(name);
                             if (entry != null) {
                                 boolean captured = mgr.isZoneCaptured(name);
@@ -1307,7 +1650,8 @@ public class CapturePointGraphScreen {
                                 int ptCount = entry.capturePoints().size();
                                 String status = captured ? "✓" : "✗";
                                 String access = accessible ? "" : " 🔒";
-                                nm.setTitle(Component.literal(name + " [" + status + " " + ptCount + "pts" + access + "]"));
+                                String lockIndicator = entry.locked() ? " ⛔" : "";
+                                nm.setTitle(Component.literal(name + " [" + status + " " + ptCount + "pts" + access + lockIndicator + "]"));
                                 // 编辑模式下不覆盖选项值
                                 if (!editMode) {
                                     syncZoneOptions(nm, entry, captured, points);

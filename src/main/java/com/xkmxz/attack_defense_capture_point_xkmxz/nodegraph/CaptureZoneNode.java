@@ -98,8 +98,9 @@ public class CaptureZoneNode extends Node {
                 .build();
 
         // ---- 区域解锁接口（仅输入）----
-        // 输入端口 - 接收解锁信号（由逻辑组件发出，运行时控制此区域的可访问性）
-        var unlockInPort = (PortModel) context.addInputPort("unlock_in", CapturePointTypes.UNLOCK_SIGNAL)
+        // 输入端口 - 接收布尔解锁信号（由条件节点/逻辑门节点的输出直接连接）
+        // 类型改为 BOOLEAN_SIGNAL，使条件节点 true_out/false_out 可直接连接到此端口
+        var unlockInPort = (PortModel) context.addInputPort("unlock_in", CapturePointTypes.BOOLEAN_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_zone.port.unlock_in"))
                 .build();
         unlockInPort.setPortCapacity(PortCapacity.MULTIPLE);

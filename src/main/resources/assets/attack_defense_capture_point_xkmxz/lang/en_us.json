@@ -238,7 +238,10 @@
   "node.capture_condition.port.true_out": "True",
   "node.capture_condition.port.false_out": "False",
   "node.capture_condition.option.condition_type": "Condition Type",
+  "node.capture_condition.option.property": "Property",
+  "node.capture_condition.option.operator": "Operator",
   "node.capture_condition.option.compare_value": "Compare Value",
+  "node.capture_condition.port.bool_in": "Bool Input",
 
   "node.logic_gate.display_name": "Logic Gate",
   "node.logic_gate.port.in_a": "Input A",
@@ -289,6 +292,21 @@
   "condition.capture_condition.zone_owner_team": "Zone Team Match",
   "condition.capture_condition.zone_accessible": "Zone Accessible",
 
+  "property.capture_condition.captured": "Captured",
+  "property.capture_condition.owner_team": "Owner Team",
+  "property.capture_condition.capturing_team": "Capturing Team",
+  "property.capture_condition.progress": "Capture Progress",
+  "property.capture_condition.zone_captured": "Zone Captured",
+  "property.capture_condition.zone_owner_team": "Zone Owner Team",
+  "property.capture_condition.zone_accessible": "Zone Accessible",
+
+  "operator.capture_condition.equals": "==",
+  "operator.capture_condition.not_equals": "!=",
+  "operator.capture_condition.greater_or_equal": ">=",
+  "operator.capture_condition.greater": ">",
+  "operator.capture_condition.less_or_equal": "<=",
+  "operator.capture_condition.less": "<",
+
   "gate_type.logic_gate.and": "AND",
   "gate_type.logic_gate.or": "OR",
   "gate_type.logic_gate.not": "NOT",
@@ -301,5 +319,20 @@
   "action_type.capture_action.add_to_zone": "Add to Zone",
   "action_type.capture_action.remove_from_zone": "Remove from Zone",
 
-  "toast.capture_node.create.success": "Created node '%s'"
+  "toast.capture_node.create.success": "Created node '%s'",
+
+  "hud.capture_progress.friendly_owned": "\u2713 %s (Friendly-Owned)",
+  "hud.capture_progress.enemy_owned": "\u2717 %s (Enemy-Owned)",
+  "hud.capture_progress.friendly_neutralizing": "\u27F3 %s (Clearing %d%%)",
+  "hud.capture_progress.enemy_neutralizing": "\u27F3 %s (Enemy Clearing %d%%)",
+  "hud.capture_progress.friendly_recovering": "\u21BA %s (Recovering %d%%)",
+  "hud.capture_progress.enemy_recovering": "\u21BA %s (Enemy Recovering %d%%)",
+  "hud.capture_progress.friendly_capturing": "\u25B6 %s (Capturing %d%%)",
+  "hud.capture_progress.enemy_capturing": "\u25B6 %s (Enemy Capturing %d%%)",
+  "hud.capture_progress.idle": "\u25CB %s (Idle)",
+  "hud.capture_progress.capturing_team": "Capturing Team: %s",
+  "hud.capture_progress.owner_team": "Owner: %s",
+
+  "toast.capture_point_graph.no_server_access": "Cannot access server data. Use /capturepoint commands instead.",
+  "toast.capture_point_graph.save_failed": "Save failed: %s"
 }

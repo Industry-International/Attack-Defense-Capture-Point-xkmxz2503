@@ -103,6 +103,11 @@ public class CaptureActionNode extends Node {
 
         @Override
         public String toString() {
+            // 返回本地化文本，用于 LDLib2 枚举下拉菜单显示
+            return getDisplayName().getString();
+        }
+
+        public String getSerializationId() {
             return id;
         }
 

@@ -19,15 +19,17 @@ import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * 服务端→客户端 据点数据同步包。
  * 客户端无法直接访问服务端的 CaptureManager，
- * 通过此包将据点渲染数据（坐标、半径、颜色、是否显示）推送到客户端缓存。
+ * 通过此包将据点渲染数据（坐标、半径、颜色、是否显示）和区域名称列表推送到客户端缓存。
  */
-public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implements CustomPacketPayload {
+public record CaptureDataSyncPayload(Map<String, PointRenderData> points, List<String> zoneNames) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<CaptureDataSyncPayload> TYPE =
             new CustomPacketPayload.Type<>(
@@ -66,12 +68,16 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
         LAST_BROADCAST_VERSION.put(dimKey, currentVersion);
 
         var pointMap = new HashMap<String, PointRenderData>();
+        var zoneNameList = new ArrayList<String>();
         for (var entry : access.getPoints().values()) {
             pointMap.put(entry.name(), new PointRenderData(
                     entry.pos(), entry.radius(), entry.displayColor(), entry.showRange(), entry.captured(),
                     entry.ownerTeam(), entry.capturingTeam(), entry.captureProgress()));
         }
-        var payload = new CaptureDataSyncPayload(pointMap);
+        for (var zoneEntry : access.getZones().values()) {
+            zoneNameList.add(zoneEntry.name());
+        }
+        var payload = new CaptureDataSyncPayload(pointMap, zoneNameList);
         for (var player : level.players()) {
             PacketDistributor.sendToPlayer(player, payload);
         }
@@ -83,12 +89,16 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
     public static void sendToPlayer(ServerLevel level, ServerPlayer player) {
         var access = ICaptureDataAccess.server(level);
         var pointMap = new HashMap<String, PointRenderData>();
+        var zoneNameList = new ArrayList<String>();
         for (var entry : access.getPoints().values()) {
             pointMap.put(entry.name(), new PointRenderData(
                     entry.pos(), entry.radius(), entry.displayColor(), entry.showRange(), entry.captured(),
                     entry.ownerTeam(), entry.capturingTeam(), entry.captureProgress()));
         }
-        PacketDistributor.sendToPlayer(player, new CaptureDataSyncPayload(pointMap));
+        for (var zoneEntry : access.getZones().values()) {
+            zoneNameList.add(zoneEntry.name());
+        }
+        PacketDistributor.sendToPlayer(player, new CaptureDataSyncPayload(pointMap, zoneNameList));
     }
 
     // ---- NBT 序列化 ----
@@ -105,6 +115,7 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
     private static final String TAG_OWNER_TEAM = "ownerTeam";
     private static final String TAG_CAPTURING_TEAM = "capturingTeam";
     private static final String TAG_CAPTURE_PROGRESS = "captureProgress";
+    private static final String TAG_ZONES = "zones";
 
     private static CaptureDataSyncPayload fromTag(CompoundTag tag) {
         var points = new HashMap<String, PointRenderData>();
@@ -124,7 +135,12 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
                     entry.contains(TAG_CAPTURE_PROGRESS) ? entry.getInt(TAG_CAPTURE_PROGRESS) : 0
             ));
         }
-        return new CaptureDataSyncPayload(points);
+        var zoneNameList = new ArrayList<String>();
+        var zoneList = tag.getList(TAG_ZONES, Tag.TAG_STRING);
+        for (int i = 0; i < zoneList.size(); i++) {
+            zoneNameList.add(zoneList.getString(i));
+        }
+        return new CaptureDataSyncPayload(points, zoneNameList);
     }
 
     private static CompoundTag toTag(CaptureDataSyncPayload payload) {
@@ -146,6 +162,12 @@ public record CaptureDataSyncPayload(Map<String, PointRenderData> points) implem
             list.add(e);
         }
         tag.put(TAG_POINTS, list);
+        // 序列化区域名称列表
+        var zoneList = new ListTag();
+        for (var zoneName : payload.zoneNames()) {
+            zoneList.add(net.minecraft.nbt.StringTag.valueOf(zoneName));
+        }
+        tag.put(TAG_ZONES, zoneList);
         return tag;
     }
 

@@ -18,23 +18,45 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * 所有方块实体UI的操作都通过此包发送到服务端，
  * 由服务端 CaptureManager 统一处理，实现客户端-服务端严格分离。
  *
- * action 取值：
- *   \"create_point\"     -> data = \"pointName\"
- *   \"create_point_at\"  -> data = \"pointName,x,y,z,radius\"
- *   \"set_radius\"       -> data = \"pointName,radius\"
- *   \"set_color\"        -> data = \"pointName,color\"
- *   \"toggle_range\"     -> data = \"pointName,true/false\"
- *   \"set_captured\"     -> data = \"pointName,true/false\"
- *   \"add_to_zone\"      -> data = \"zoneName,pointName\"
- *   \"remove_from_zone\" -> data = \"pointName\"
- *   \"zone_set_captured\" -> data = \"zoneName,true/false\"
- *   \"block_unbind\"     -> data = \"pointName\"
+ * <p>动作字符串常量定义：
+ * <ul>
+ *   <li>{@link #ACTION_CREATE_POINT_AT} — 在指定坐标创建据点</li>
+ *   <li>{@link #ACTION_SET_RADIUS} — 设置据点半径</li>
+ *   <li>{@link #ACTION_SET_COLOR} — 设置据点颜色</li>
+ *   <li>{@link #ACTION_TOGGLE_RANGE} — 切换范围显示</li>
+ *   <li>{@link #ACTION_SET_CAPTURED} — 设置据点占领状态</li>
+ *   <li>{@link #ACTION_ZONE_SET_CAPTURED} — 设置区域占领状态</li>
+ *   <li>{@link #ACTION_ADD_TO_ZONE} — 据点加入区域</li>
+ *   <li>{@link #ACTION_REMOVE_FROM_ZONE} — 据点移出区域</li>
+ *   <li>{@link #ACTION_BLOCK_UNBIND} — 方块解除据点绑定</li>
+ * </ul>
  */
 public record BlockEntityActionPayload(
         BlockPos blockPos,
         String action,
         String data
 ) implements CustomPacketPayload {
+
+    // ---- 动作字符串常量 ----
+
+    /** 在指定坐标创建据点并绑定 */
+    public static final String ACTION_CREATE_POINT_AT = "create_point_at";
+    /** 设置据点半径 */
+    public static final String ACTION_SET_RADIUS = "set_radius";
+    /** 设置据点颜色 */
+    public static final String ACTION_SET_COLOR = "set_color";
+    /** 切换范围显示 */
+    public static final String ACTION_TOGGLE_RANGE = "toggle_range";
+    /** 设置据点占领状态 */
+    public static final String ACTION_SET_CAPTURED = "set_captured";
+    /** 设置区域占领状态 */
+    public static final String ACTION_ZONE_SET_CAPTURED = "zone_set_captured";
+    /** 据点加入区域 */
+    public static final String ACTION_ADD_TO_ZONE = "add_to_zone";
+    /** 据点移出区域 */
+    public static final String ACTION_REMOVE_FROM_ZONE = "remove_from_zone";
+    /** 方块解除据点绑定 */
+    public static final String ACTION_BLOCK_UNBIND = "block_unbind";
 
     public static final CustomPacketPayload.Type<BlockEntityActionPayload> TYPE =
             new CustomPacketPayload.Type<>(

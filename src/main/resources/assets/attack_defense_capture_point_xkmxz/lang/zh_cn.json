@@ -238,7 +238,10 @@
   "node.capture_condition.port.true_out": "真",
   "node.capture_condition.port.false_out": "假",
   "node.capture_condition.option.condition_type": "条件类型",
+  "node.capture_condition.option.property": "属性",
+  "node.capture_condition.option.operator": "运算符",
   "node.capture_condition.option.compare_value": "比较值",
+  "node.capture_condition.port.bool_in": "布尔输入",
 
   "node.logic_gate.display_name": "逻辑门",
   "node.logic_gate.port.in_a": "输入A",
@@ -289,6 +292,21 @@
   "condition.capture_condition.zone_owner_team": "区域队伍匹配",
   "condition.capture_condition.zone_accessible": "区域可访问",
 
+  "property.capture_condition.captured": "占领状态",
+  "property.capture_condition.owner_team": "占领队伍",
+  "property.capture_condition.capturing_team": "占领中队伍",
+  "property.capture_condition.progress": "占领进度",
+  "property.capture_condition.zone_captured": "区域占领状态",
+  "property.capture_condition.zone_owner_team": "区域占领队伍",
+  "property.capture_condition.zone_accessible": "区域可访问",
+
+  "operator.capture_condition.equals": "==",
+  "operator.capture_condition.not_equals": "!=",
+  "operator.capture_condition.greater_or_equal": ">=",
+  "operator.capture_condition.greater": ">",
+  "operator.capture_condition.less_or_equal": "<=",
+  "operator.capture_condition.less": "<",
+
   "gate_type.logic_gate.and": "与",
   "gate_type.logic_gate.or": "或",
   "gate_type.logic_gate.not": "非",
@@ -301,5 +319,20 @@
   "action_type.capture_action.add_to_zone": "加入区域",
   "action_type.capture_action.remove_from_zone": "移出区域",
 
-  "toast.capture_node.create.success": "已创建节点 '%s'"
+  "toast.capture_node.create.success": "已创建节点 '%s'",
+
+  "hud.capture_progress.friendly_owned": "\u2713 %s（已占领）",
+  "hud.capture_progress.enemy_owned": "\u2717 %s（敌方占领）",
+  "hud.capture_progress.friendly_neutralizing": "\u27F3 %s（清除中 %d%%）",
+  "hud.capture_progress.enemy_neutralizing": "\u27F3 %s（敌方清除中 %d%%）",
+  "hud.capture_progress.friendly_recovering": "\u21BA %s（恢复中 %d%%）",
+  "hud.capture_progress.enemy_recovering": "\u21BA %s（敌方恢复中 %d%%）",
+  "hud.capture_progress.friendly_capturing": "\u25B6 %s（占领中 %d%%）",
+  "hud.capture_progress.enemy_capturing": "\u25B6 %s（敌方占领中 %d%%）",
+  "hud.capture_progress.idle": "\u25CB %s（空闲）",
+  "hud.capture_progress.capturing_team": "占领队伍：%s",
+  "hud.capture_progress.owner_team": "所属：%s",
+
+  "toast.capture_point_graph.no_server_access": "无法访问服务端数据，请使用 /capturepoint 命令操作",
+  "toast.capture_point_graph.save_failed": "保存失败：%s"
 }

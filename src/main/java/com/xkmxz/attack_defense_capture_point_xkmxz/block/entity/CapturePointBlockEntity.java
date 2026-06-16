@@ -287,6 +287,7 @@ public class CapturePointBlockEntity extends BlockEntity {
         var mc = Minecraft.getInstance();
         var win = mc.getWindow();
         int scw = win.getGuiScaledWidth();
+        int sch = win.getGuiScaledHeight();
 
         int panelW = Math.min(scw * 40 / 100, 260);
         int btnH = 22;
@@ -295,7 +296,7 @@ public class CapturePointBlockEntity extends BlockEntity {
         int statusH = 12;
         int bottomH = 20;
         int pad = 6;
-        int panelH = pad + titleH + statusH + gap + 6 * (btnH + gap) + bottomH + pad;
+        int panelH = Math.min(pad + titleH + statusH + gap + 6 * (btnH + gap) + bottomH + pad, (int)(sch * 0.8));
 
         int bg = 0xFF1A1A2E;
         int btnBg = 0xFF16213E;
@@ -529,7 +530,10 @@ public class CapturePointBlockEntity extends BlockEntity {
             return;
         }
 
-        int dw = 260, dh = 130;
+        int scw = mc.getWindow().getGuiScaledWidth();
+        int sch = mc.getWindow().getGuiScaledHeight();
+        int dw = Math.min(scw * 50 / 100, 260);
+        int dh = Math.min(130, (int)(sch * 0.8));
         var root = new UIElement()
                 .layout(l -> l.width(dw).height(dh).paddingAll(10).gapAll(6)
                         .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN))
@@ -590,25 +594,25 @@ public class CapturePointBlockEntity extends BlockEntity {
 
     private void openZoneSelectDialog() {
         var mc = Minecraft.getInstance();
-        var access = getServerDataAccess();
-        if (access == null) {
-            ToastNotification.push(ToastNotification.Type.ERROR,
-                    Component.translatable("toast.capture_point_block.server_only"));
-            reopenMenu();
-            return;
-        }
+        var cache = ClientCaptureDataCache.INSTANCE;
+        var zoneNames = cache.getZoneNames();
 
-        var zones = access.getZones();
-        if (zones.isEmpty()) {
+        if (zoneNames.isEmpty()) {
             ToastNotification.push(ToastNotification.Type.ERROR,
                     Component.translatable("toast.capture_point_block.no_zones"));
             reopenMenu();
             return;
         }
 
-        int dw = 300, dh = 40 + zones.size() * 30 + 40;
+        int scw = mc.getWindow().getGuiScaledWidth();
+        int sch = mc.getWindow().getGuiScaledHeight();
+        int panelW = Math.min(scw * 50 / 100, 320);
+        int btnH = 28;
+        int rawDh = 40 + zoneNames.size() * (btnH + 4) + 44;
+        int dh = Math.min(rawDh, (int)(sch * 0.8));
+
         var root = new UIElement()
-                .layout(l -> l.width(dw).height(dh).paddingAll(12).gapAll(6)
+                .layout(l -> l.width(panelW).height(dh).paddingAll(12).gapAll(6)
                         .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN))
                 .style(s -> s.background(Sprites.BORDER)
                         .backgroundTexture(new ColorRectTexture(0xFF1A1A2E)));
@@ -617,10 +621,9 @@ public class CapturePointBlockEntity extends BlockEntity {
         title.layout(l -> l.widthPercent(100).heightAuto());
         root.addChildren(title);
 
-        for (var entry : zones.values()) {
-            var btn = new Button().setText(Component.literal(entry.name()));
-            btn.layout(l -> l.widthPercent(100).height(28));
-            String zoneName = entry.name();
+        for (var zoneName : zoneNames) {
+            var btn = new Button().setText(Component.literal(zoneName));
+            btn.layout(l -> l.widthPercent(100).height(btnH));
             btn.setOnClick(e -> {
                 sendAction("add_to_zone", zoneName + "," + boundPointName);
                 ToastNotification.push(ToastNotification.Type.SUCCESS,
@@ -632,14 +635,20 @@ public class CapturePointBlockEntity extends BlockEntity {
         }
 
         var cancelBtn = new Button().setText(Component.translatable("gui.capture_point_graph.dialog.cancel"));
-        cancelBtn.layout(l -> l.widthPercent(100).height(28));
+        cancelBtn.layout(l -> l.widthPercent(100).height(btnH));
         cancelBtn.setOnClick(e -> {
             mc.setScreen(null);
             reopenMenu();
         });
         root.addChildren(cancelBtn);
 
-        var ui = ModularUI.of(UI.of(root));
+        var wrap = new UIElement()
+                .layout(l -> l.widthPercent(100).heightPercent(100).paddingAll(0).gapAll(0)
+                        .justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER)
+                        .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
+        wrap.addChildren(root);
+
+        var ui = ModularUI.of(UI.of(wrap));
         mc.setScreen(new ModularUIScreen(ui,
                 Component.translatable("gui.capture_point_block.dialog.select_zone")));
     }
@@ -661,11 +670,13 @@ public class CapturePointBlockEntity extends BlockEntity {
 
     private void openColorPickerDialog() {
         var mc = Minecraft.getInstance();
+        int scw = mc.getWindow().getGuiScaledWidth();
+        int sch = mc.getWindow().getGuiScaledHeight();
         int cols = 4;
         int rows = (int) Math.ceil((double) PRESET_COLORS.length / cols);
         int cw = 50, ch = 36, cgap = 6;
-        int dw = cols * (cw + cgap) + 24 + cgap;
-        int dh = rows * (ch + cgap) + 80;
+        int dw = Math.min(cols * (cw + cgap) + 24 + cgap, (int)(scw * 0.8));
+        int dh = Math.min(rows * (ch + cgap) + 80, (int)(sch * 0.8));
 
         var root = new UIElement()
                 .layout(l -> l.width(dw).height(dh).paddingAll(12).gapAll(8)
@@ -743,7 +754,10 @@ public class CapturePointBlockEntity extends BlockEntity {
     private void openInputDialog(Component titleText, Component labelText,
                                   String defaultValue, Consumer<String> onConfirm) {
         var mc = Minecraft.getInstance();
-        int dw = 320, dh = 160;
+        int scw = mc.getWindow().getGuiScaledWidth();
+        int sch = mc.getWindow().getGuiScaledHeight();
+        int dw = Math.min(scw * 50 / 100, 320);
+        int dh = Math.min(160, (int)(sch * 0.8));
 
         var root = new UIElement()
                 .layout(l -> l.width(dw).height(dh).paddingAll(12).gapAll(8)

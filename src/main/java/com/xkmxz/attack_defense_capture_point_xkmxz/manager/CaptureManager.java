@@ -28,7 +28,8 @@ public class CaptureManager extends SavedData {
     private final Map<String, DecisionNodeData> decisionNodes = new LinkedHashMap<>();
     /** 通用节点选项：nodeName → { optionId → optionValue } 用于持久化条件/逻辑门/动作/常量等节点配置 */
     private final Map<String, Map<String, String>> nodeOptions = new LinkedHashMap<>();
-    private final List<GraphWireData> graphWires = new ArrayList<>();
+    /** 节点图连线数据：用于持久化逻辑节点间的连线关系 */
+    private final List<WireData> wires = new ArrayList<>();
     /** 节点图视角状态（平移位置 + 缩放），null 表示使用默认视角（fit to children） */
     @Nullable
     private ViewState viewState = null;
@@ -121,7 +122,7 @@ public class CaptureManager extends SavedData {
     }
 
     public record ZoneEntry(String name, List<String> capturePoints, @Nullable String requiredZone, boolean captured,
-                            @Nullable String ownerTeam, List<String> unlockDependencies) {
+                            @Nullable String ownerTeam, List<String> unlockDependencies, boolean locked) {
 
         public CompoundTag toNbt() {
             var tag = new CompoundTag();
@@ -141,6 +142,7 @@ public class CaptureManager extends SavedData {
                 }
                 tag.put("unlockDependencies", unlockList);
             }
+            if (locked) tag.putBoolean("locked", true);
             return tag;
         }
 
@@ -161,27 +163,32 @@ public class CaptureManager extends SavedData {
                     unlockDeps.add(unlockList.getString(i));
                 }
             }
-            return new ZoneEntry(name, points, requiredZone, captured, ownerTeam, unlockDeps);
+            var locked = tag.contains("locked") && tag.getBoolean("locked");
+            return new ZoneEntry(name, points, requiredZone, captured, ownerTeam, unlockDeps, locked);
         }
 
         public ZoneEntry withCaptured(boolean newCaptured) {
-            return new ZoneEntry(name, capturePoints, requiredZone, newCaptured, ownerTeam, unlockDependencies);
+            return new ZoneEntry(name, capturePoints, requiredZone, newCaptured, ownerTeam, unlockDependencies, locked);
         }
 
         public ZoneEntry withOwnerTeam(@Nullable String newOwnerTeam) {
-            return new ZoneEntry(name, capturePoints, requiredZone, captured, newOwnerTeam, unlockDependencies);
+            return new ZoneEntry(name, capturePoints, requiredZone, captured, newOwnerTeam, unlockDependencies, locked);
         }
 
         public ZoneEntry withCapturePoints(List<String> newCapturePoints) {
-            return new ZoneEntry(name, newCapturePoints, requiredZone, captured, ownerTeam, unlockDependencies);
+            return new ZoneEntry(name, newCapturePoints, requiredZone, captured, ownerTeam, unlockDependencies, locked);
         }
 
         public ZoneEntry withRequiredZone(@Nullable String newRequiredZone) {
-            return new ZoneEntry(name, capturePoints, newRequiredZone, captured, ownerTeam, unlockDependencies);
+            return new ZoneEntry(name, capturePoints, newRequiredZone, captured, ownerTeam, unlockDependencies, locked);
         }
 
         public ZoneEntry withUnlockDependencies(List<String> newUnlockDeps) {
-            return new ZoneEntry(name, capturePoints, requiredZone, captured, ownerTeam, newUnlockDeps);
+            return new ZoneEntry(name, capturePoints, requiredZone, captured, ownerTeam, newUnlockDeps, locked);
+        }
+
+        public ZoneEntry withLocked(boolean newLocked) {
+            return new ZoneEntry(name, capturePoints, requiredZone, captured, ownerTeam, unlockDependencies, newLocked);
         }
     }
 
@@ -234,6 +241,33 @@ public class CaptureManager extends SavedData {
                     tag.getString(TAG_CONDITION),
                     tag.contains(TAG_TARGET_TEAM) ? tag.getString(TAG_TARGET_TEAM) : null,
                     tag.contains(TAG_PROGRESS) ? tag.getInt(TAG_PROGRESS) : 50
+            );
+        }
+    }
+
+    // ---- Wire Data (连线数据，持久化所有连线关系) ----
+
+    public record WireData(String fromNode, String fromPort, String toNode, String toPort) {
+        private static final String TAG_FROM_NODE = "fromNode";
+        private static final String TAG_FROM_PORT = "fromPort";
+        private static final String TAG_TO_NODE = "toNode";
+        private static final String TAG_TO_PORT = "toPort";
+
+        public CompoundTag toNbt() {
+            var tag = new CompoundTag();
+            tag.putString(TAG_FROM_NODE, fromNode);
+            tag.putString(TAG_FROM_PORT, fromPort);
+            tag.putString(TAG_TO_NODE, toNode);
+            tag.putString(TAG_TO_PORT, toPort);
+            return tag;
+        }
+
+        public static WireData fromNbt(CompoundTag tag) {
+            return new WireData(
+                    tag.getString(TAG_FROM_NODE),
+                    tag.getString(TAG_FROM_PORT),
+                    tag.getString(TAG_TO_NODE),
+                    tag.getString(TAG_TO_PORT)
             );
         }
     }
@@ -366,6 +400,34 @@ public class CaptureManager extends SavedData {
                 points.size(), zones.size(), layouts.size(), decisions.size(), nodeOpts.size(), wires.size(), version);
     }
 
+    /**
+     * 批量应用 GUI 编辑器的完整数据快照 + 节点布局 + 节点选项 + 连线数据 + 视角状态。
+     */
+    public void applyGraphSnapshotWithLayoutAndWires(Map<String, CapturePointEntry> newPoints,
+                                                      Map<String, ZoneEntry> newZones,
+                                                      Map<String, NodeLayout> layouts,
+                                                      Map<String, DecisionNodeData> decisions,
+                                                      Map<String, Map<String, String>> nodeOpts,
+                                                      List<WireData> wireData,
+                                                      @Nullable ViewState viewState) {
+        points.clear();
+        zones.clear();
+        points.putAll(newPoints);
+        zones.putAll(newZones);
+        nodeLayouts.clear();
+        nodeLayouts.putAll(layouts);
+        decisionNodes.clear();
+        decisionNodes.putAll(decisions);
+        nodeOptions.clear();
+        nodeOptions.putAll(nodeOpts);
+        this.wires.clear();
+        this.wires.addAll(wireData);
+        this.viewState = viewState;
+        bumpVersion();
+        LOGGER.info("Applied graph snapshot: {} points, {} zones, {} layouts, {} decisions, {} nodeOptions, {} wires (version {})",
+                points.size(), zones.size(), layouts.size(), decisions.size(), nodeOpts.size(), wireData.size(), version);
+    }
+
     // ---- Node Layout ----
 
     // ---- Data Access ----
@@ -393,8 +455,15 @@ public class CaptureManager extends SavedData {
         return Collections.unmodifiableMap(nodeOptions);
     }
 
-    public List<GraphWireData> getGraphWires() {
-        return Collections.unmodifiableList(graphWires);
+    /** 获取所有连线数据的不可修改视图 */
+    public List<WireData> getWires() {
+        return Collections.unmodifiableList(wires);
+    }
+
+    /** 设置连线数据 */
+    public void setWires(List<WireData> newWires) {
+        wires.clear();
+        wires.addAll(newWires);
     }
 
     public void addOrUpdatePoint(String name, BlockPos pos) {
@@ -547,7 +616,7 @@ public class CaptureManager extends SavedData {
     }
 
     public void createZone(String name, @Nullable String requiredZone) {
-        zones.put(name, new ZoneEntry(name, new ArrayList<>(), requiredZone, false, null, new ArrayList<>()));
+        zones.put(name, new ZoneEntry(name, new ArrayList<>(), requiredZone, false, null, new ArrayList<>(), false));
         bumpVersion();
     }
 
@@ -562,7 +631,7 @@ public class CaptureManager extends SavedData {
             var newList = new ArrayList<>(zone.capturePoints());
             if (!newList.contains(pointName)) {
                 newList.add(pointName);
-                zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam(), zone.unlockDependencies()));
+                zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam(), zone.unlockDependencies(), zone.locked()));
                 bumpVersion();
             }
         }
@@ -573,7 +642,7 @@ public class CaptureManager extends SavedData {
         if (zone != null) {
             var newList = new ArrayList<>(zone.capturePoints());
             newList.remove(pointName);
-            zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam(), zone.unlockDependencies()));
+            zones.put(zoneName, new ZoneEntry(zone.name(), newList, zone.requiredZone(), zone.captured(), zone.ownerTeam(), zone.unlockDependencies(), zone.locked()));
             bumpVersion();
         }
     }
@@ -588,7 +657,7 @@ public class CaptureManager extends SavedData {
         var zone = zones.get(zoneName);
         if (zone != null) {
             // 保留原有据点列表和占领状态，仅修改区域依赖
-            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), requiredZone, zone.captured(), zone.ownerTeam(), zone.unlockDependencies()));
+            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), requiredZone, zone.captured(), zone.ownerTeam(), zone.unlockDependencies(), zone.locked()));
             bumpVersion();
         }
     }
@@ -602,7 +671,7 @@ public class CaptureManager extends SavedData {
     public void setZoneUnlockDependencies(String zoneName, List<String> unlockDeps) {
         var zone = zones.get(zoneName);
         if (zone != null) {
-            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), zone.requiredZone(), zone.captured(), zone.ownerTeam(), unlockDeps));
+            zones.put(zoneName, new ZoneEntry(zone.name(), new ArrayList<>(zone.capturePoints()), zone.requiredZone(), zone.captured(), zone.ownerTeam(), unlockDeps, zone.locked()));
             bumpVersion();
         }
     }
@@ -635,9 +704,15 @@ public class CaptureManager extends SavedData {
         var zone = zones.get(zoneName);
         if (zone == null) return false;
 
-        if (!visiting.add(zoneName)) {
-            LOGGER.warn("Detected zone dependency cycle while resolving access for '{}'", zoneName);
-            return false;
+        // 如果 locked 为 true，表示被条件节点/逻辑门节点锁定，强制不可访问
+        if (zone.locked()) return false;
+
+        // 解锁依赖由逻辑组件（CaptureActionNode）在运行时通过 CaptureManager API 控制。
+        if (zone.unlockDependencies() != null && !zone.unlockDependencies().isEmpty()) {
+            for (var dep : zone.unlockDependencies()) {
+                if (!canAccessZone(dep)) return false;
+            }
+            return true; // 所有解锁依赖的区域都可访问
         }
 
         try {
@@ -767,6 +842,15 @@ public class CaptureManager extends SavedData {
             tag.put("viewState", viewState.toNbt());
         }
 
+        // 保存连线数据
+        if (!wires.isEmpty()) {
+            var wiresList = new ListTag();
+            for (var wire : wires) {
+                wiresList.add(wire.toNbt());
+            }
+            tag.put("wires", wiresList);
+        }
+
         return tag;
     }
 
@@ -850,7 +934,16 @@ public class CaptureManager extends SavedData {
             viewState = null;
         }
 
+        // 加载连线数据
+        wires.clear();
+        if (tag.contains("wires", Tag.TAG_LIST)) {
+            var wiresList = tag.getList("wires", Tag.TAG_COMPOUND);
+            for (int i = 0; i < wiresList.size(); i++) {
+                wires.add(WireData.fromNbt(wiresList.getCompound(i)));
+            }
+        }
+
         LOGGER.info("Loaded {} points, {} zones, {} layouts, {} decisions, {} nodeOptions, {} wires (version {}), defender={}",
-                points.size(), zones.size(), nodeLayouts.size(), decisionNodes.size(), nodeOptions.size(), graphWires.size(), version, defenderTeam);
+                points.size(), zones.size(), nodeLayouts.size(), decisionNodes.size(), nodeOptions.size(), wires.size(), version, defenderTeam);
     }
 }

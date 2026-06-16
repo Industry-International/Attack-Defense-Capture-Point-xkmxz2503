@@ -1,46 +1,60 @@
 package com.xkmxz.attack_defense_capture_point_xkmxz;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
-
+/**
+ * 攻防战占领点 Mod 配置。
+ * 提供占领相关参数的可配置化支持。
+ */
 @EventBusSubscriber(modid = Attack_defense_capture_point_xkmxz.MODID)
 public class Config {
+
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    private static final ModConfigSpec.BooleanValue LOG_DIRT_BLOCK = BUILDER.comment("Whether to log the dirt block on common setup").define("logDirtBlock", true);
+    // ---- 占领逻辑参数 ----
 
-    private static final ModConfigSpec.IntValue MAGIC_NUMBER = BUILDER.comment("A magic number").defineInRange("magicNumber", 42, 0, Integer.MAX_VALUE);
+    /** 占领进度检查间隔（tick数），默认 10 tick (0.5秒) */
+    private static final ModConfigSpec.IntValue CAPTURE_INTERVAL_TICKS = BUILDER
+            .comment("Capture progress check interval in ticks (default: 10 = 0.5s)")
+            .defineInRange("captureIntervalTicks", 10, 1, 200);
 
-    public static final ModConfigSpec.ConfigValue<String> MAGIC_NUMBER_INTRODUCTION = BUILDER.comment("What you want the introduction message to be for the magic number").define("magicNumberIntroduction", "The magic number is... ");
+    /** 同步安全网间隔（tick数），默认 40 tick (2秒) */
+    private static final ModConfigSpec.IntValue SYNC_INTERVAL_TICKS = BUILDER
+            .comment("Sync safenet interval in ticks (default: 40 = 2s)")
+            .defineInRange("syncIntervalTicks", 40, 10, 600);
 
-    private static final ModConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER.comment("A list of items to log on common setup.").defineListAllowEmpty("items", List.of("minecraft:iron_ingot"), Config::validateItemName);
+    /** 据点空闲自动恢复的超时时间（tick数），默认 600 tick (30秒) */
+    private static final ModConfigSpec.IntValue IDLE_TIMEOUT_TICKS = BUILDER
+            .comment("Idle timeout before auto-recovery starts in ticks (default: 600 = 30s)")
+            .defineInRange("idleTimeoutTicks", 600, 100, 72000);
 
-    static final ModConfigSpec SPEC = BUILDER.build();
+    /** 占领/清除速度（每 tick 变化的进度值） */
+    private static final ModConfigSpec.IntValue CAPTURE_SPEED = BUILDER
+            .comment("Capture/neutralize speed per tick (default: 2)")
+            .defineInRange("captureSpeed", 2, 1, 10);
 
-    public static boolean logDirtBlock;
-    public static int magicNumber;
-    public static String magicNumberIntroduction;
-    public static Set<Item> items;
+    /** 自动恢复速度（每 tick 恢复的进度值） */
+    private static final ModConfigSpec.IntValue RECOVERY_SPEED = BUILDER
+            .comment("Recovery speed per tick when no players are present (default: 1)")
+            .defineInRange("recoverySpeed", 1, 0, 10);
 
-    private static boolean validateItemName(final Object obj) {
-        return obj instanceof String itemName && BuiltInRegistries.ITEM.containsKey(ResourceLocation.parse(itemName));
-    }
+    public static final ModConfigSpec SPEC = BUILDER.build();
+
+    public static int captureIntervalTicks;
+    public static int syncIntervalTicks;
+    public static int idleTimeoutTicks;
+    public static int captureSpeed;
+    public static int recoverySpeed;
 
     @SubscribeEvent
     static void onLoad(final ModConfigEvent event) {
-        logDirtBlock = LOG_DIRT_BLOCK.get();
-        magicNumber = MAGIC_NUMBER.get();
-        magicNumberIntroduction = MAGIC_NUMBER_INTRODUCTION.get();
-
-        items = ITEM_STRINGS.get().stream().map(itemName -> BuiltInRegistries.ITEM.get(ResourceLocation.parse(itemName))).collect(Collectors.toSet());
+        captureIntervalTicks = CAPTURE_INTERVAL_TICKS.get();
+        syncIntervalTicks = SYNC_INTERVAL_TICKS.get();
+        idleTimeoutTicks = IDLE_TIMEOUT_TICKS.get();
+        captureSpeed = CAPTURE_SPEED.get();
+        recoverySpeed = RECOVERY_SPEED.get();
     }
 }
