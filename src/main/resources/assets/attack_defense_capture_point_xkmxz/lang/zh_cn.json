@@ -109,6 +109,7 @@
   "node.capture_zone.port.zone_out": "区域信号",
   "node.capture_zone.port.required_zone": "依赖",
   "node.capture_zone.port.unlock_in": "解锁输入",
+  "node.capture_zone.port.lock_in": "锁定输入",
 
   "gui.capture_point_graph.menu.create_point": "创建据点",
   "gui.capture_point_graph.menu.create_zone": "创建区域",
@@ -235,6 +236,7 @@
   "node.capture_condition.display_name": "条件",
   "node.capture_condition.port.point_target": "据点目标",
   "node.capture_condition.port.zone_target": "区域目标",
+  "node.capture_condition.port.bool_in": "布尔输入",
   "node.capture_condition.port.true_out": "真",
   "node.capture_condition.port.false_out": "假",
   "node.capture_condition.option.condition_type": "条件类型",

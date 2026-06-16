@@ -29,16 +29,24 @@ public final class CaptureGraphRuntime {
         var incoming = buildIncomingMap(wires);
         var conditionNodes = collectNodesWithOption(nodeOptions, "property");
         var actionNodes = collectNodesWithOption(nodeOptions, "action_type");
+        var zoneLockChanges = evaluateZoneLocks(manager, nodeOptions, incoming, new HashSet<>());
 
         if (conditionNodes.isEmpty() || actionNodes.isEmpty()) {
+            if (zoneLockChanges) {
+                CapturePointBlockEntity.syncAllBoundBlocks(level);
+            }
             return;
         }
 
         var executed = new HashSet<String>();
-        boolean changed = false;
+        boolean changed = zoneLockChanges;
 
         for (var conditionNode : conditionNodes) {
-            for (var target : resolveConditionTargets(conditionNode, incoming, manager)) {
+            var targets = resolveConditionTargets(conditionNode, incoming, manager);
+            if (targets.isEmpty() && hasBooleanInputWire(conditionNode, incoming)) {
+                targets = List.of(new GraphTarget(null, null));
+            }
+            for (var target : targets) {
                 var evalContext = GraphContext.fromTarget(target, manager);
                 if (evalContext == null) continue;
 
@@ -82,6 +90,20 @@ public final class CaptureGraphRuntime {
         return result;
     }
 
+    private static boolean hasBooleanInputWire(String conditionNode,
+                                               Map<String, List<CaptureManager.GraphWireData>> incoming) {
+        var inputs = incoming.get(conditionNode);
+        if (inputs == null) {
+            return false;
+        }
+        for (var wire : inputs) {
+            if ("bool_in".equals(wire.toPort())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static List<GraphTarget> resolveConditionTargets(String conditionNode,
                                                              Map<String, List<CaptureManager.GraphWireData>> incoming,
                                                              CaptureManager manager) {
@@ -117,7 +139,8 @@ public final class CaptureGraphRuntime {
         var property = CaptureConditionNode.PropertyType.fromId(opts.get("property"));
         var operator = CaptureConditionNode.OperatorType.fromId(opts.get("operator"));
         String compareValue = opts.getOrDefault("compare_value", "");
-        return evaluateCondition(property, operator, compareValue, context);
+        boolean propertyResult = evaluateCondition(property, operator, compareValue, context);
+        return propertyResult;
     }
 
     private static boolean evaluateCondition(CaptureConditionNode.PropertyType property,
@@ -204,6 +227,31 @@ public final class CaptureGraphRuntime {
         return false;
     }
 
+    private static boolean evaluateConditionWithBooleanInputs(String nodeName,
+                                                              GraphContext context,
+                                                              Map<String, Map<String, String>> nodeOptions,
+                                                              Map<String, List<CaptureManager.GraphWireData>> incoming,
+                                                              Set<String> recursionGuard) {
+        Boolean self = evaluateConditionNode(nodeName, context, nodeOptions);
+        if (self == null || !self) {
+            return false;
+        }
+
+        var wires = incoming.get(nodeName);
+        if (wires == null) {
+            return true;
+        }
+
+        for (var wire : wires) {
+            if (!"bool_in".equals(wire.toPort())) continue;
+            boolean upstream = evaluateBooleanOutput(wire.fromNode(), wire.fromPort(), context, nodeOptions, incoming, recursionGuard);
+            if (!upstream) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static boolean evaluateGateNode(String nodeName,
                                             GraphContext context,
                                             Map<String, Map<String, String>> nodeOptions,
@@ -250,8 +298,7 @@ public final class CaptureGraphRuntime {
         if (opts == null) return false;
 
         if (opts.containsKey("property")) {
-            Boolean condition = evaluateConditionNode(fromNode, context, nodeOptions);
-            if (condition == null) return false;
+            boolean condition = evaluateConditionWithBooleanInputs(fromNode, context, nodeOptions, incoming, recursionGuard);
             return "true_out".equals(fromPort) ? condition : !condition;
         }
         if (opts.containsKey("gate_type")) {
@@ -261,6 +308,54 @@ public final class CaptureGraphRuntime {
             return parseBoolean(opts.get("constant_value"));
         }
         return false;
+    }
+
+    private static boolean evaluateZoneLocks(CaptureManager manager,
+                                             Map<String, Map<String, String>> nodeOptions,
+                                             Map<String, List<CaptureManager.GraphWireData>> incoming,
+                                             Set<String> recursionGuard) {
+        boolean changed = false;
+        for (var zoneEntry : manager.getZones().entrySet()) {
+            String zoneName = zoneEntry.getKey();
+            var zoneNodeIncoming = incoming.get(zoneName);
+            if (zoneNodeIncoming == null || zoneNodeIncoming.isEmpty()) {
+                changed |= applyZoneLockState(manager, zoneName, false);
+                continue;
+            }
+
+            var context = GraphContext.fromTarget(GraphTarget.forZone(zoneName), manager);
+            if (context == null) continue;
+
+            boolean hasUnlockInput = false;
+            boolean anyUnlockTrue = false;
+            boolean anyLockTrue = false;
+
+            for (var wire : zoneNodeIncoming) {
+                if ("unlock_in".equals(wire.toPort())) {
+                    hasUnlockInput = true;
+                    if (evaluateBooleanOutput(wire.fromNode(), wire.fromPort(), context, nodeOptions, incoming, recursionGuard)) {
+                        anyUnlockTrue = true;
+                    }
+                } else if ("lock_in".equals(wire.toPort())) {
+                    if (evaluateBooleanOutput(wire.fromNode(), wire.fromPort(), context, nodeOptions, incoming, recursionGuard)) {
+                        anyLockTrue = true;
+                    }
+                }
+            }
+
+            boolean locked = anyLockTrue || (hasUnlockInput && !anyUnlockTrue);
+            changed |= applyZoneLockState(manager, zoneName, locked);
+        }
+        return changed;
+    }
+
+    private static boolean applyZoneLockState(CaptureManager manager, String zoneName, boolean locked) {
+        var zone = manager.getZones().get(zoneName);
+        if (zone == null || zone.locked() == locked) {
+            return false;
+        }
+        manager.setZoneLocked(zoneName, locked);
+        return true;
     }
 
     private static boolean executeAction(String nodeName,

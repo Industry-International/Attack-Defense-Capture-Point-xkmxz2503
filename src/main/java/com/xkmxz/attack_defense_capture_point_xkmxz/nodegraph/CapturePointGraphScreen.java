@@ -535,13 +535,13 @@ public class CapturePointGraphScreen {
                     name, cpList, reqZone, zoneCaptured, null, new ArrayList<>(), false));
         }
 
-        // ---- Phase 6: 条件/逻辑门→unlock_in 解锁信号路由 ----
-        // 条件节点的 true_out/false_out → 区域节点 unlock_in 端口
-        // 条件评估为 true 时连接 unlock_in → 区域保持 unlocked (locked=false)
-        // 条件评估为 false 时连接 unlock_in → 区域被锁定 (locked=true)
-        // 多个条件连接到同一区域的 unlock_in 时：任意一个 false → 锁定
-        var unlockLockedZones = new LinkedHashSet<String>(); // 被条件锁定的区域
-        var unlockUnlockedZones = new LinkedHashSet<String>(); // 被条件解锁的区域
+        // ---- Phase 6: 条件/逻辑门→unlock_in / lock_in 锁定信号路由 ----
+        // 规则：
+        // 1. lock_in 任意一个为 true → 区域锁定
+        // 2. 若存在 unlock_in 连线，则至少一个 unlock_in 为 true 才解锁
+        var lockedZones = new LinkedHashSet<String>();
+        var unlockedZones = new LinkedHashSet<String>();
+        var zonesWithUnlockInput = new LinkedHashSet<String>();
 
         for (var element : graph.graphModel.getGraphElementModels()) {
             if (element instanceof WireModel wire) {
@@ -555,10 +555,12 @@ public class CapturePointGraphScreen {
                 String toName = toNm.getName();
                 if (fromName == null || toName == null) continue;
 
-                // 条件节点 true_out/false_out → 区域 unlock_in
-                if (conditionModels.containsKey(fromName) && hasInputPort(toNm, "unlock_in")) {
+                // 条件节点 true_out/false_out → 区域 unlock_in / lock_in
+                if (conditionModels.containsKey(fromName) && (hasInputPort(toNm, "unlock_in") || hasInputPort(toNm, "lock_in"))) {
                     String portName = fromPort.getUniqueName();
+                    String targetPort = toPort.getUniqueName();
                     if (portName == null) continue;
+                    if (targetPort == null) continue;
 
                     List<String> inputPoints = conditionInputPoints.get(fromName);
                     if (inputPoints == null || inputPoints.isEmpty()) continue;
@@ -574,44 +576,48 @@ public class CapturePointGraphScreen {
                         var op = CaptureConditionNode.OperatorType.fromId(opStr);
                         boolean result = evaluateNewCondition(prop, op, compareValue, pointEntry, newZones.get(toName));
 
-                        if (portName.equals("true_out") && result) {
-                            unlockUnlockedZones.add(toName);
-                        } else if (portName.equals("false_out") && result) {
-                            unlockLockedZones.add(toName);
-                        } else if (portName.equals("true_out")) {
-                            // true_out 但条件为 false → 锁定
-                            unlockLockedZones.add(toName);
-                        } else if (portName.equals("false_out")) {
-                            // false_out 但条件为 false → 解锁
-                            unlockUnlockedZones.add(toName);
+                        boolean outputValue = "true_out".equals(portName) ? result : !result;
+                        if ("unlock_in".equals(targetPort)) {
+                            zonesWithUnlockInput.add(toName);
+                            if (outputValue) {
+                                unlockedZones.add(toName);
+                            }
+                        } else if ("lock_in".equals(targetPort) && outputValue) {
+                            lockedZones.add(toName);
                         }
                     }
                 }
-                // 逻辑门 result → 区域 unlock_in
-                else if (gateModels.containsKey(fromName) && hasInputPort(toNm, "unlock_in")) {
+                // 逻辑门 result → 区域 unlock_in / lock_in
+                else if (gateModels.containsKey(fromName) && (hasInputPort(toNm, "unlock_in") || hasInputPort(toNm, "lock_in"))) {
                     String portName = fromPort.getUniqueName();
+                    String targetPort = toPort.getUniqueName();
                     if (portName == null || !portName.equals("result")) continue;
+                    if (targetPort == null) continue;
 
                     // 简化的门评估：查找条件节点输入到此门的所有路径
                     boolean gateResult = evaluateGateSimple(fromName, conditionModels, gateModels,
                             conditionInputPoints, newPoints, graph);
 
-                    if (gateResult) {
-                        unlockUnlockedZones.add(toName);
-                    } else {
-                        unlockLockedZones.add(toName);
+                    if ("unlock_in".equals(targetPort)) {
+                        zonesWithUnlockInput.add(toName);
+                        if (gateResult) {
+                            unlockedZones.add(toName);
+                        }
+                    } else if ("lock_in".equals(targetPort) && gateResult) {
+                        lockedZones.add(toName);
                     }
                 }
             }
         }
 
-        // 应用锁定状态：如果同时连接到 unlock 和 lock，则 lock 优先
+        // 应用锁定状态：lock_in 优先；若存在 unlock_in 但没有任何 true，也视为锁定
         for (var zoneName : newZones.keySet()) {
-            boolean isLocked = unlockLockedZones.contains(zoneName);
+            boolean isLocked = lockedZones.contains(zoneName)
+                    || (zonesWithUnlockInput.contains(zoneName) && !unlockedZones.contains(zoneName));
             if (isLocked) {
                 var existing = newZones.get(zoneName);
                 newZones.put(zoneName, existing.withLocked(true));
-            } else if (unlockUnlockedZones.contains(zoneName)) {
+            } else if (unlockedZones.contains(zoneName) || zonesWithUnlockInput.contains(zoneName)) {
                 var existing = newZones.get(zoneName);
                 newZones.put(zoneName, existing.withLocked(false));
             }
@@ -967,29 +973,12 @@ public class CapturePointGraphScreen {
             var layouts = new LinkedHashMap<String, CaptureManager.NodeLayout>();
             var decisions = new LinkedHashMap<String, CaptureManager.DecisionNodeData>();
             var nodeOpts = new LinkedHashMap<String, Map<String, String>>();
-            var wireData = new ArrayList<CaptureManager.WireData>();
+            var wireData = collectGraphWires();
             // 获取当前视角状态
             CaptureManager.ViewState currentViewState = null;
             try {
                 currentViewState = graphView.getCurrentViewState();
             } catch (Exception ignored) {}
-
-            for (var wire : mgr.getGraphWires()) {
-                var fromNode = findNodeModelByName(wire.fromNode());
-                var toNode = findNodeModelByName(wire.toNode());
-                if (fromNode == null || toNode == null) continue;
-
-                var fromPort = fromNode.getOutputsById().get(wire.fromPort());
-                var toPort = toNode.getInputsById().get(wire.toPort());
-                if (fromPort == null || toPort == null) continue;
-
-                try {
-                    graph.graphModel.createWire(fromPort, toPort);
-                } catch (Exception e) {
-                    LOGGER.warn("Failed to restore logic wire {}.{} -> {}.{}: {}",
-                            wire.fromNode(), wire.fromPort(), wire.toNode(), wire.toPort(), e.getMessage());
-                }
-            }
 
             for (var element : graph.graphModel.getGraphElementModels()) {
                 if (element instanceof NodeModel nm) {
@@ -1029,23 +1018,6 @@ public class CapturePointGraphScreen {
                     if (!optMap.isEmpty()) {
                         nodeOpts.put(name, optMap);
                     }
-                } else if (element instanceof com.lowdragmc.lowdraglib2.nodegraphtookit.model.wire.WireModel wire) {
-                    // 收集连线数据
-                    var fromPort = wire.getFromPort();
-                    var toPort = wire.getToPort();
-                    if (fromPort != null && toPort != null) {
-                        var fromNode = fromPort.getNodeModel();
-                        var toNode = toPort.getNodeModel();
-                        if (fromNode instanceof NodeModel fromNm && toNode instanceof NodeModel toNm) {
-                            String fromName = fromNm.getName();
-                            String toName = toNm.getName();
-                            String fromPortName = fromPort.getUniqueName();
-                            String toPortName = toPort.getUniqueName();
-                            if (fromName != null && toName != null && fromPortName != null && toPortName != null) {
-                                wireData.add(new CaptureManager.WireData(fromName, fromPortName, toName, toPortName));
-                            }
-                        }
-                    }
                 }
             }
 
@@ -1060,7 +1032,7 @@ public class CapturePointGraphScreen {
             }
 
             // 无冲突或非编辑模式：直接应用（含布局 + 判断器 + 节点选项 + 连线数据 + 视角状态）
-            mgr.applyGraphSnapshotWithLayoutAndWires(newPoints, newZones, layouts, decisions, nodeOpts, wireData, currentViewState);
+            mgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wireData, currentViewState);
 
             // 立即同步所有已加载方块实体的渲染缓存
             var serverLevel = getServerLevel();
@@ -1122,7 +1094,7 @@ public class CapturePointGraphScreen {
                                      Map<String, CaptureManager.NodeLayout> layouts,
                                      Map<String, CaptureManager.DecisionNodeData> decisions,
                                      Map<String, Map<String, String>> nodeOpts,
-                                     List<CaptureManager.WireData> wireData,
+                                     List<CaptureManager.GraphWireData> wireData,
                                      @Nullable CaptureManager.ViewState viewState) {
         var mc = mc();
         int scw = mc.getWindow().getGuiScaledWidth();
@@ -1155,9 +1127,9 @@ public class CapturePointGraphScreen {
         overwriteBtn.setOnClick(e -> {
             var overwriteMgr = getCaptureManager();
             if (overwriteMgr != null) {
-                overwriteMgr.applyGraphSnapshotWithLayoutAndWires(newPoints, newZones, layouts, decisions, nodeOpts, wireData, viewState);
+                overwriteMgr.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wireData, viewState);
             } else {
-                captureManager.applyGraphSnapshotWithLayoutAndWires(newPoints, newZones, layouts, decisions, nodeOpts, wireData, viewState);
+                captureManager.applyGraphSnapshotWithLayout(newPoints, newZones, layouts, decisions, nodeOpts, wireData, viewState);
             }
 
             var sl = getServerLevel();
@@ -1231,9 +1203,6 @@ public class CapturePointGraphScreen {
             var savedLayouts = mgr.getNodeLayouts();
             // 获取保存的通用节点选项
             var savedNodeOptions = mgr.getNodeOptions();
-            // 获取保存的连线数据
-            var savedWires = mgr.getWires();
-
             var pointModels = new LinkedHashMap<String, NodeModel>();
             var zoneModels = new LinkedHashMap<String, NodeModel>();
 
@@ -1348,12 +1317,10 @@ public class CapturePointGraphScreen {
                 }
             }
 
-            // 恢复保存的连线数据（所有类型的连线，包括逻辑节点间连线）
-            if (savedWires != null && !savedWires.isEmpty()) {
-                for (var wireData : savedWires) {
-                    restoreWire(wireData.fromNode(), wireData.fromPort(),
-                            wireData.toNode(), wireData.toPort());
-                }
+            // 恢复保存的逻辑连线（条件/逻辑门/动作/常量之间）
+            for (var wireData : mgr.getGraphWires()) {
+                restoreWire(wireData.fromNode(), wireData.fromPort(),
+                        wireData.toNode(), wireData.toPort());
             }
 
             // 恢复通用节点选项（条件/逻辑门/动作/常量的选项值）

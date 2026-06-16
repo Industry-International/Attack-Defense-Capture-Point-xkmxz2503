@@ -18,6 +18,7 @@ import net.minecraft.network.chat.Component;
  *   <li>zone_out — 发出依赖信号（声明此区域是其他区域的前置）</li>
  *   <li>required_zone — 接收依赖信号（声明此区域依赖哪个前置区域）</li>
  *   <li>unlock_in — 接收解锁信号（由逻辑组件在运行时控制）</li>
+ *   <li>lock_in — 接收锁定信号（由逻辑组件在运行时控制）</li>
  * </ul>
  * 所有逻辑判断（条件评估、解锁控制等）由 CaptureConditionNode、LogicGateNode、
  * CaptureActionNode 等逻辑部件完成。
@@ -97,12 +98,16 @@ public class CaptureZoneNode extends Node {
                 .withDisplayName(Component.translatable("node.capture_zone.port.required_zone"))
                 .build();
 
-        // ---- 区域解锁接口（仅输入）----
-        // 输入端口 - 接收布尔解锁信号（由条件节点/逻辑门节点的输出直接连接）
-        // 类型改为 BOOLEAN_SIGNAL，使条件节点 true_out/false_out 可直接连接到此端口
+        // ---- 区域解锁/锁定接口（仅输入）----
+        // 输入端口 - 接收布尔解锁信号（区域节点根据解锁输入与锁定输入来判断是否解锁）
         var unlockInPort = (PortModel) context.addInputPort("unlock_in", CapturePointTypes.BOOLEAN_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_zone.port.unlock_in"))
                 .build();
         unlockInPort.setPortCapacity(PortCapacity.MULTIPLE);
+
+        var lockInPort = (PortModel) context.addInputPort("lock_in", CapturePointTypes.BOOLEAN_SIGNAL)
+                .withDisplayName(Component.translatable("node.capture_zone.port.lock_in"))
+                .build();
+        lockInPort.setPortCapacity(PortCapacity.MULTIPLE);
     }
 }

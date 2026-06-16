@@ -396,7 +396,8 @@ public class CapturePointGraphView extends GraphView {
      */
     private boolean isConditionModel(AbstractNodeModel model) {
         if (model instanceof INodeWithOptions opts) {
-            return opts.getNodeOptionById("condition_type") != null;
+            return opts.getNodeOptionById("property") != null
+                    || opts.getNodeOptionById("condition_type") != null;
         }
         return false;
     }
