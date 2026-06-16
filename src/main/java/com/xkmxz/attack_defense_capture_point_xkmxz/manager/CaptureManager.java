@@ -28,6 +28,7 @@ public class CaptureManager extends SavedData {
     private final Map<String, DecisionNodeData> decisionNodes = new LinkedHashMap<>();
     /** 通用节点选项：nodeName → { optionId → optionValue } 用于持久化条件/逻辑门/动作/常量等节点配置 */
     private final Map<String, Map<String, String>> nodeOptions = new LinkedHashMap<>();
+    private final List<GraphWireData> graphWires = new ArrayList<>();
     /** 节点图连线数据：用于持久化逻辑节点间的连线关系 */
     private final List<WireData> wires = new ArrayList<>();
     /** 节点图视角状态（平移位置 + 缩放），null 表示使用默认视角（fit to children） */
@@ -456,6 +457,10 @@ public class CaptureManager extends SavedData {
     }
 
     /** 获取所有连线数据的不可修改视图 */
+    public List<GraphWireData> getGraphWires() {
+        return Collections.unmodifiableList(graphWires);
+    }
+
     public List<WireData> getWires() {
         return Collections.unmodifiableList(wires);
     }

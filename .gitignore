@@ -3,9 +3,12 @@
 
 # Gradle cache folder
 .gradle
+.gradle-user-home/
+.gradle-user-home-verify/
 
 # Gradle build folder
 build
+*.log
 
 # IntelliJ
 out/
