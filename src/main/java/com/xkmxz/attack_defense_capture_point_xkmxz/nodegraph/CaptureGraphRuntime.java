@@ -27,7 +27,7 @@ public final class CaptureGraphRuntime {
 
         var outgoing = buildOutgoingMap(wires);
         var incoming = buildIncomingMap(wires);
-        var conditionNodes = collectNodesWithOption(nodeOptions, "condition_type");
+        var conditionNodes = collectNodesWithOption(nodeOptions, "property");
         var actionNodes = collectNodesWithOption(nodeOptions, "action_type");
 
         if (conditionNodes.isEmpty() || actionNodes.isEmpty()) {
@@ -114,40 +114,23 @@ public final class CaptureGraphRuntime {
         var opts = nodeOptions.get(nodeName);
         if (opts == null) return null;
 
-        var conditionType = CaptureConditionNode.ConditionType.fromId(opts.get("condition_type"));
+        var property = CaptureConditionNode.PropertyType.fromId(opts.get("property"));
+        var operator = CaptureConditionNode.OperatorType.fromId(opts.get("operator"));
         String compareValue = opts.getOrDefault("compare_value", "");
-        return evaluateCondition(conditionType, compareValue, context);
+        return evaluateCondition(property, operator, compareValue, context);
     }
 
-    private static boolean evaluateCondition(CaptureConditionNode.ConditionType conditionType,
+    private static boolean evaluateCondition(CaptureConditionNode.PropertyType property,
+                                             CaptureConditionNode.OperatorType operator,
                                              String compareValue,
                                              GraphContext context) {
-        String cv = compareValue != null ? compareValue : "";
-        return switch (conditionType) {
-            case POINT_CAPTURED -> context.point() != null && context.point().captured();
-            case POINT_NOT_CAPTURED -> context.point() != null && !context.point().captured();
-            case POINT_OWNER_TEAM -> context.point() != null && !cv.isEmpty() && cv.equals(context.point().ownerTeam());
-            case POINT_NOT_OWNER_TEAM -> context.point() != null && (cv.isEmpty() || !cv.equals(context.point().ownerTeam()));
-            case POINT_CAPTURING_TEAM -> {
-                if (context.point() == null) yield false;
-                if (cv.isEmpty()) yield context.point().capturingTeam() != null;
-                yield cv.equals(context.point().capturingTeam());
-            }
-            case POINT_PROGRESS_GE -> {
-                if (context.point() == null) yield false;
-                int threshold;
-                try {
-                    threshold = Integer.parseInt(cv);
-                } catch (NumberFormatException e) {
-                    threshold = 50;
-                }
-                yield context.point().captureProgress() >= threshold;
-            }
-            case ZONE_CAPTURED -> context.zone() != null && context.zone().captured();
-            case ZONE_NOT_CAPTURED -> context.zone() != null && !context.zone().captured();
-            case ZONE_OWNER_TEAM -> context.zone() != null && !cv.isEmpty() && cv.equals(context.zone().ownerTeam());
-            case ZONE_ACCESSIBLE -> context.zoneName() != null && context.manager().canAccessZone(context.zoneName());
-        };
+        if (property == null || operator == null) {
+            return false;
+        }
+
+        String actualValue = getPropertyValue(property, context);
+        String expectedValue = compareValue != null ? compareValue : "";
+        return operator.evaluate(actualValue, expectedValue);
     }
 
     private static boolean propagateFromCondition(String conditionNode,
@@ -266,7 +249,7 @@ public final class CaptureGraphRuntime {
         var opts = nodeOptions.get(fromNode);
         if (opts == null) return false;
 
-        if (opts.containsKey("condition_type")) {
+        if (opts.containsKey("property")) {
             Boolean condition = evaluateConditionNode(fromNode, context, nodeOptions);
             if (condition == null) return false;
             return "true_out".equals(fromPort) ? condition : !condition;
@@ -369,6 +352,18 @@ public final class CaptureGraphRuntime {
 
     private static String normalize(@Nullable String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static String getPropertyValue(CaptureConditionNode.PropertyType property, GraphContext context) {
+        return switch (property) {
+            case CAPTURED -> String.valueOf(context.point() != null && context.point().captured());
+            case OWNER_TEAM -> context.point() != null && context.point().ownerTeam() != null ? context.point().ownerTeam() : "";
+            case CAPTURING_TEAM -> context.point() != null && context.point().capturingTeam() != null ? context.point().capturingTeam() : "";
+            case PROGRESS -> String.valueOf(context.point() != null ? context.point().captureProgress() : 0);
+            case ZONE_CAPTURED -> String.valueOf(context.zone() != null && context.zone().captured());
+            case ZONE_OWNER_TEAM -> context.zone() != null && context.zone().ownerTeam() != null ? context.zone().ownerTeam() : "";
+            case ZONE_ACCESSIBLE -> String.valueOf(context.zoneName() != null && context.manager().canAccessZone(context.zoneName()));
+        };
     }
 
     private record GraphTarget(@Nullable String pointName, @Nullable String zoneName) {
