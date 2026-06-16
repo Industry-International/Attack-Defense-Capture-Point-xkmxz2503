@@ -120,6 +120,13 @@
   "gui.capture_point_graph.menu.list_status": "查看状态",
   "gui.capture_point_graph.menu.refresh": "刷新",
   "gui.capture_point_graph.menu.close": "关闭",
+  "gui.capture_point_graph.tray.title": "据点收纳器",
+  "gui.capture_point_graph.tray.hint": "据点方块新建的据点会先放这里，点击加入后再进入节点图。",
+  "gui.capture_point_graph.tray.add": "加入",
+  "gui.capture_point_graph.btn_canvas": "画布",
+  "gui.capture_point_graph.canvas.title": "画布设置",
+  "gui.capture_point_graph.canvas.width": "画布宽度",
+  "gui.capture_point_graph.canvas.height": "画布高度",
 
   "gui.capture_point_graph.dialog.title": "输入",
   "gui.capture_point_graph.dialog.confirm": "确认",
@@ -320,6 +327,9 @@
   "action_type.capture_action.notify": "通知",
   "action_type.capture_action.add_to_zone": "加入区域",
   "action_type.capture_action.remove_from_zone": "移出区域",
+  "action_type.capture_action.run_command": "执行命令",
+
+  "message.attack_defense_capture_point_xkmxz.op_only": "仅 OP 可打开该面板",
 
   "toast.capture_node.create.success": "已创建节点 '%s'",
 
@@ -336,5 +346,8 @@
   "hud.capture_progress.owner_team": "所属：%s",
 
   "toast.capture_point_graph.no_server_access": "无法访问服务端数据，请使用 /capturepoint 命令操作",
-  "toast.capture_point_graph.save_failed": "保存失败：%s"
+  "toast.capture_point_graph.save_failed": "保存失败：%s",
+  "toast.capture_point_graph.canvas.invalid": "画布尺寸必须是有效数字",
+  "toast.capture_graph.command.success": "命令执行成功：%s",
+  "toast.capture_graph.command.failed": "命令执行失败：%s"
 }

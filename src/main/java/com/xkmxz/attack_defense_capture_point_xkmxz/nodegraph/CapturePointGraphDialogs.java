@@ -115,7 +115,7 @@ public final class CapturePointGraphDialogs {
      * 打开删除确认对话框。
      * @param level 世界
      * @param name 节点名称
-     * @param type 节点类型: "point" / "zone" / "decision"
+     * @param type 节点类型: "point" / "zone" / "decision" / "condition" / "gate" / "action" / "constant"
      */
     public static void openDeleteConfirmDialog(Level level, String name, String type) {
         // 安全检查：名称不能为空
@@ -146,6 +146,10 @@ public final class CapturePointGraphDialogs {
             titleLangKey = "gui.capture_point_graph.dialog.delete_decision.title";
             msgLangKey = "gui.capture_point_graph.dialog.delete_decision.message";
             toastLangKey = "toast.capture_decision.delete.success";
+        } else if ("condition".equals(type) || "gate".equals(type) || "action".equals(type) || "constant".equals(type)) {
+            titleLangKey = "gui.capture_point_graph.dialog.delete_decision.title";
+            msgLangKey = "gui.capture_point_graph.dialog.delete_decision.message";
+            toastLangKey = "toast.capture_decision.delete.success";
         } else {
             titleLangKey = "gui.capture_point_graph.dialog.delete_point.title";
             msgLangKey = "gui.capture_point_graph.dialog.delete_point.message";
@@ -172,12 +176,17 @@ public final class CapturePointGraphDialogs {
         confirmBtn.layout(l -> l.flex(1).heightPercent(100));
         confirmBtn.setOnClick(e -> {
             // 直接 Java 调用删除
-            var mgr = getManager(level);
-            if (mgr != null) {
+            var access = getManager(level);
+            if (access != null) {
                 if ("zone".equals(type)) {
-                    mgr.removeZone(name);
-                } else if ("point".equals(type) || "decision".equals(type)) {
-                    mgr.removePoint(name);
+                    access.removeZone(name);
+                } else if ("point".equals(type)) {
+                    access.removePoint(name);
+                } else {
+                    var captureManager = getRawManager(level);
+                    if (captureManager != null) {
+                        deleteLogicNode(captureManager, name);
+                    }
                 }
             }
             ToastNotification.push(ToastNotification.Type.SUCCESS,
@@ -202,6 +211,41 @@ public final class CapturePointGraphDialogs {
         var ui = ModularUI.of(UI.of(root));
         mc.setScreen(new ModularUIScreen(ui,
                 Component.translatable("gui.capture_point_graph.dialog.title")));
+    }
+
+    private static void deleteLogicNode(CaptureManager mgr, String name) {
+        var layouts = new java.util.LinkedHashMap<>(mgr.getNodeLayouts());
+        var decisions = new java.util.LinkedHashMap<>(mgr.getDecisionNodes());
+        var nodeOpts = new java.util.LinkedHashMap<>(mgr.getNodeOptions());
+        var wires = new java.util.ArrayList<>(mgr.getGraphWires());
+
+        layouts.remove(name);
+        decisions.remove(name);
+        nodeOpts.remove(name);
+        wires.removeIf(w -> name.equals(w.fromNode()) || name.equals(w.toNode()));
+
+        mgr.applyGraphSnapshotWithLayout(
+                new java.util.LinkedHashMap<>(mgr.getPoints()),
+                new java.util.LinkedHashMap<>(mgr.getZones()),
+                layouts,
+                decisions,
+                nodeOpts,
+                wires,
+                mgr.getViewState()
+        );
+    }
+
+    @org.jetbrains.annotations.Nullable
+    private static CaptureManager getRawManager(Level level) {
+        if (level instanceof net.minecraft.server.level.ServerLevel sl) {
+            return CaptureManager.get(sl);
+        }
+        var mc = Minecraft.getInstance();
+        if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
+            var sl = mc.getSingleplayerServer().getLevel(level.dimension());
+            if (sl != null) return CaptureManager.get(sl);
+        }
+        return null;
     }
 
     // ====== 高级配置对话框 ======

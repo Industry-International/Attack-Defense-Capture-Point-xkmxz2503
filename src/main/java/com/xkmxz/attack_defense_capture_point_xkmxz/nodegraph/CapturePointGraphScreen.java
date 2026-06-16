@@ -7,6 +7,7 @@ import com.lowdragmc.lowdraglib2.gui.ui.UI;
 import com.lowdragmc.lowdraglib2.gui.ui.UIElement;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Button;
 import com.lowdragmc.lowdraglib2.gui.ui.elements.Label;
+import com.lowdragmc.lowdraglib2.gui.ui.elements.TextField;
 import com.lowdragmc.lowdraglib2.gui.ui.styletemplate.Sprites;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.IFieldValueConfigurable;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
@@ -42,6 +43,11 @@ public class CapturePointGraphScreen {
     private final Level level;
     private final CapturePointGraphView graphView;
     private final CapturePointGraph graph;
+    private final LinkedHashMap<String, CaptureManager.CapturePointEntry> trayPoints = new LinkedHashMap<>();
+    @Nullable
+    private UIElement trayPanel;
+    @Nullable
+    private UIElement trayList;
     private boolean editMode = false;
     private long snapshotVersion = -1; // 进入编辑模式时捕获的版本号，用于冲突检测
 
@@ -95,12 +101,17 @@ public class CapturePointGraphScreen {
         var topBar = createTopBar();
         root.addChildren(topBar);
 
+        // 左侧收纳器
+        var tray = createPointTray();
+        root.addChildren(tray);
+
         // 图视图 - 填充剩余空间
-        graphView.layout(l -> l.widthPercent(100).flex(1));
+        graphView.layout(l -> l.widthPercent(100).flex(1).marginLeft(170));
         root.addChildren(graphView);
 
         // 根据 CaptureManager 加载数据到图
         loadDataToGraph();
+        refreshPointTray();
         // 初始立即同步节点选项数据
         refreshNodeTitles();
         // 注册选项值变更监听器，实现 GUI→Game 实时回写
@@ -124,6 +135,7 @@ public class CapturePointGraphScreen {
             if (mgr == null) return;
             var savedViewState = mgr.getViewState();
             if (savedViewState != null) {
+                graphView.setCanvasSize(savedViewState.canvasWidth(), savedViewState.canvasHeight());
                 graphView.setPendingViewState(
                         savedViewState.offsetX(),
                         savedViewState.offsetY(),
@@ -171,6 +183,11 @@ public class CapturePointGraphScreen {
         saveBtn.layout(l -> l.width(50).heightPercent(100));
         saveBtn.setOnClick(e -> saveGraph());
 
+        var canvasBtn = CapturePointTheme.styledButton(
+                Component.translatable("gui.capture_point_graph.btn_canvas"));
+        canvasBtn.layout(l -> l.width(52).heightPercent(100));
+        canvasBtn.setOnClick(e -> openCanvasConfigDialog());
+
         // 刷新按钮
         var refreshBtn = CapturePointTheme.styledButton(
                 Component.translatable("gui.attack_defense_capture_point_xkmxz.graph.btn_refresh"));
@@ -189,8 +206,138 @@ public class CapturePointGraphScreen {
         // 占位弹性空间
         var spacer = new UIElement().layout(l -> l.flex(1));
 
-        tb.addChildren(title, spacer, editToggleBtn, saveBtn, refreshBtn, closeBtn);
+        tb.addChildren(title, spacer, editToggleBtn, saveBtn, canvasBtn, refreshBtn, closeBtn);
         return tb;
+    }
+
+    private UIElement createPointTray() {
+        var tray = CapturePointTheme.panel(CapturePointTheme.FIELD_COLOR)
+                .layout(l -> l.positionType(dev.vfyjxf.taffy.style.TaffyPosition.ABSOLUTE)
+                        .left(8).top(40).width(156).bottom(8)
+                        .paddingAll(8).gapAll(6)
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN));
+
+        var title = CapturePointTheme.titleLabel(Component.translatable("gui.capture_point_graph.tray.title"));
+        title.layout(l -> l.widthPercent(100).heightAuto());
+        tray.addChildren(title);
+
+        var hint = CapturePointTheme.secondaryLabel(Component.translatable("gui.capture_point_graph.tray.hint"));
+        hint.layout(l -> l.widthPercent(100).heightAuto());
+        tray.addChildren(hint);
+
+        var list = new UIElement()
+                .layout(l -> l.widthPercent(100).flex(1)
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN).gapAll(4));
+        tray.addChildren(list);
+
+        this.trayPanel = tray;
+        this.trayList = list;
+        return tray;
+    }
+
+    private void refreshPointTray() {
+        if (trayPanel == null || trayList == null) return;
+        trayPanel.setDisplay(editMode && !trayPoints.isEmpty());
+        trayPanel.setVisible(editMode && !trayPoints.isEmpty());
+        trayList.clearAllChildren();
+
+        for (var entry : trayPoints.entrySet()) {
+            String pointName = entry.getKey();
+            var row = new UIElement()
+                    .layout(l -> l.widthPercent(100).height(26)
+                            .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(4));
+
+            var label = new Label().setText(Component.literal(pointName));
+            label.layout(l -> l.flex(1).heightPercent(100));
+            label.textStyle(s -> s.fontSize(9.5f).textColor(0xFFECECEC));
+
+            var addBtn = new Button().setText(Component.translatable("gui.capture_point_graph.tray.add"));
+            addBtn.layout(l -> l.width(42).heightPercent(100));
+            addBtn.setOnClick(e -> moveTrayPointIntoGraph(pointName));
+
+            row.addChildren(label, addBtn);
+            trayList.addChildren(row);
+        }
+    }
+
+    private void moveTrayPointIntoGraph(String pointName) {
+        var entry = trayPoints.remove(pointName);
+        if (entry == null) return;
+
+        var center = graphView.getGraphCoordsAtScreen(
+                mc().getWindow().getGuiScaledWidth() * 0.6f,
+                mc().getWindow().getGuiScaledHeight() * 0.5f
+        );
+        var node = new CapturePointNode();
+        var nodeModel = graph.graphModel.createNodeModel(node, new org.joml.Vector2f(center.x, center.y));
+        nodeModel.setName(pointName);
+        nodeModel.setTitle(Component.literal(pointName));
+        syncPointOptions(nodeModel, entry, entry.captured(), getCaptureManager() != null ? getCaptureManager().findZoneForPoint(pointName) : null);
+        refreshPointTray();
+        refreshNodeTitles();
+    }
+
+    private void openCanvasConfigDialog() {
+        var mc = mc();
+        int dw = 300;
+        int dh = 180;
+
+        var root = CapturePointTheme.panel()
+                .layout(l -> l.width(dw).height(dh).paddingAll(12).gapAll(8)
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.COLUMN));
+
+        var title = CapturePointTheme.titleLabel(Component.translatable("gui.capture_point_graph.canvas.title"));
+        title.layout(l -> l.widthPercent(100).heightAuto());
+        root.addChildren(title);
+
+        var widthLabel = CapturePointTheme.secondaryLabel(Component.translatable("gui.capture_point_graph.canvas.width"));
+        widthLabel.layout(l -> l.widthPercent(100).heightAuto());
+        var widthField = new TextField();
+        widthField.layout(l -> l.widthPercent(100).height(26));
+        widthField.setValue(String.valueOf((int) graphView.getCanvasWidth()), false);
+
+        var heightLabel = CapturePointTheme.secondaryLabel(Component.translatable("gui.capture_point_graph.canvas.height"));
+        heightLabel.layout(l -> l.widthPercent(100).heightAuto());
+        var heightField = new TextField();
+        heightField.layout(l -> l.widthPercent(100).height(26));
+        heightField.setValue(String.valueOf((int) graphView.getCanvasHeight()), false);
+
+        root.addChildren(widthLabel, widthField, heightLabel, heightField, new UIElement().layout(l -> l.flex(1)));
+
+        var btnRow = new UIElement()
+                .layout(l -> l.widthPercent(100).height(28)
+                        .flexDirection(dev.vfyjxf.taffy.style.FlexDirection.ROW).gapAll(6));
+        var applyBtn = CapturePointTheme.styledButton(Component.translatable("gui.capture_point_graph.dialog.confirm"));
+        applyBtn.layout(l -> l.flex(1).heightPercent(100));
+        applyBtn.setOnClick(e -> {
+            try {
+                float width = Float.parseFloat(widthField.getText().trim());
+                float height = Float.parseFloat(heightField.getText().trim());
+                graphView.setCanvasSize(width, height);
+                mc.setScreen(null);
+                open();
+            } catch (NumberFormatException ignored) {
+                ToastNotification.push(ToastNotification.Type.ERROR,
+                        Component.translatable("toast.capture_point_graph.canvas.invalid"));
+            }
+        });
+        var cancelBtn = CapturePointTheme.styledButton(Component.translatable("gui.capture_point_graph.dialog.cancel"));
+        cancelBtn.layout(l -> l.flex(1).heightPercent(100));
+        cancelBtn.setOnClick(e -> {
+            mc.setScreen(null);
+            open();
+        });
+        btnRow.addChildren(applyBtn, cancelBtn);
+        root.addChildren(btnRow);
+
+        var wrap = new UIElement()
+                .layout(l -> l.widthPercent(100).heightPercent(100).paddingAll(0).gapAll(0)
+                        .justifyContent(dev.vfyjxf.taffy.style.AlignContent.CENTER)
+                        .alignItems(dev.vfyjxf.taffy.style.AlignItems.CENTER));
+        wrap.addChildren(root);
+
+        var ui = ModularUI.of(UI.of(wrap));
+        mc.setScreen(new ModularUIScreen(ui, Component.translatable("gui.capture_point_graph.canvas.title")));
     }
 
     /** 更新编辑模式切换按钮的文本和颜色 */
@@ -401,6 +548,11 @@ public class CapturePointGraphScreen {
                     radius, color, showRange));
         }
 
+        // 收纳器中的据点不在当前画布中，但仍需保留到快照里，避免保存时丢失。
+        for (var entry : trayPoints.entrySet()) {
+            newPoints.putIfAbsent(entry.getKey(), entry.getValue());
+        }
+
         // ---- Phase 4: 条件链评估（替代旧硬编码 CaptureDecisionNode） ----
         // conditionRoutedPoints: zoneName → [pointName, ...] 通过条件链路由到区域的据点
         var conditionRoutedPoints = new LinkedHashMap<String, List<String>>();
@@ -533,6 +685,20 @@ public class CapturePointGraphScreen {
 
             newZones.put(name, new CaptureManager.ZoneEntry(
                     name, cpList, reqZone, zoneCaptured, null, new ArrayList<>(), false));
+        }
+
+        // 收纳器中的据点如果原本已属于某个区域，则保留该关系。
+        var currentManager = getCaptureManager();
+        if (currentManager != null) {
+            for (var trayPointName : trayPoints.keySet()) {
+                String zoneName = currentManager.findZoneForPoint(trayPointName);
+                if (zoneName == null) continue;
+                var zone = newZones.get(zoneName);
+                if (zone == null || zone.capturePoints().contains(trayPointName)) continue;
+                var cpList = new ArrayList<>(zone.capturePoints());
+                cpList.add(trayPointName);
+                newZones.put(zoneName, zone.withCapturePoints(cpList));
+            }
         }
 
         // ---- Phase 6: 条件/逻辑门→unlock_in / lock_in 锁定信号路由 ----
@@ -1194,6 +1360,7 @@ public class CapturePointGraphScreen {
         try {
             var mgr = getCaptureManager();
             if (mgr == null) return;
+            trayPoints.clear();
 
             var points = mgr.getPoints();
             var zones = mgr.getZones();
@@ -1215,6 +1382,10 @@ public class CapturePointGraphScreen {
             // 创建据点节点（优先使用保存的布局）
             for (var entry : points.values()) {
                 var saved = savedLayouts.get(entry.name());
+                if (saved == null) {
+                    trayPoints.put(entry.name(), entry);
+                    continue;
+                }
                 float x = saved != null ? saved.x() : (startX + (idx % 4) * gapX);
                 float y = saved != null ? saved.y() : (startY + (idx / 4) * gapY);
                 var node = new CapturePointNode();

@@ -3,6 +3,7 @@ package com.xkmxz.attack_defense_capture_point_xkmxz.block;
 import com.mojang.serialization.MapCodec;
 import com.xkmxz.attack_defense_capture_point_xkmxz.block.entity.CapturePointBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
@@ -39,6 +40,12 @@ public class CapturePointBlock extends BaseEntityBlock {
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
+        if (!player.canUseGameMasterBlocks()) {
+            if (level.isClientSide) {
+                player.displayClientMessage(Component.translatable("message.attack_defense_capture_point_xkmxz.op_only"), true);
+            }
+            return InteractionResult.FAIL;
+        }
         if (level.isClientSide) {
             // 客户端：打开方块功能菜单
             if (level.getBlockEntity(pos) instanceof CapturePointBlockEntity be) {

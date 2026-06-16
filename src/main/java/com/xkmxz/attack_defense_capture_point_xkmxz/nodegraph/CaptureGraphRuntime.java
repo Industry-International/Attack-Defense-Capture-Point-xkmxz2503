@@ -46,14 +46,28 @@ public final class CaptureGraphRuntime {
             if (targets.isEmpty() && hasBooleanInputWire(conditionNode, incoming)) {
                 targets = List.of(new GraphTarget(null, null));
             }
+            var contexts = new ArrayList<GraphContext>();
             for (var target : targets) {
                 var evalContext = GraphContext.fromTarget(target, manager);
-                if (evalContext == null) continue;
+                if (evalContext != null) {
+                    contexts.add(evalContext);
+                }
+            }
+            if (contexts.isEmpty()) {
+                continue;
+            }
 
-                Boolean result = evaluateConditionNode(conditionNode, evalContext, nodeOptions);
-                if (result == null) continue;
+            boolean aggregate = true;
+            for (var context : contexts) {
+                Boolean result = evaluateConditionNode(conditionNode, context, nodeOptions);
+                if (result == null || !result) {
+                    aggregate = false;
+                    break;
+                }
+            }
 
-                changed |= propagateFromCondition(conditionNode, result, evalContext, nodeOptions, outgoing, incoming,
+            for (var context : contexts) {
+                changed |= propagateFromCondition(conditionNode, aggregate, context, nodeOptions, outgoing, incoming,
                         manager, level, executed, new HashSet<>());
             }
         }
@@ -366,6 +380,7 @@ public final class CaptureGraphRuntime {
         var actionType = CaptureActionNode.ActionType.fromId(opts.get("action_type"));
         String targetName = normalize(opts.get("target_name"));
         String actionValue = normalize(opts.get("action_value"));
+        boolean silent = parseBoolean(opts.get("silent"));
 
         return switch (actionType) {
             case SET_CAPTURED -> applySetCaptured(targetName, actionValue, context, manager);
@@ -374,6 +389,7 @@ public final class CaptureGraphRuntime {
             case NOTIFY -> applyNotify(level, nodeName, targetName, actionValue, context);
             case ADD_TO_ZONE -> applyAddToZone(targetName, actionValue, context, manager);
             case REMOVE_FROM_ZONE -> applyRemoveFromZone(targetName, actionValue, context, manager);
+            case RUN_COMMAND -> applyRunCommand(level, targetName, actionValue, context, silent);
         };
     }
 
@@ -439,6 +455,48 @@ public final class CaptureGraphRuntime {
         if (zoneName == null) return false;
         manager.removePointFromZone(zoneName, pointName);
         return true;
+    }
+
+    private static boolean applyRunCommand(ServerLevel level,
+                                           String targetName,
+                                           String actionValue,
+                                           GraphContext context,
+                                           boolean silent) {
+        String command = !actionValue.isEmpty() ? actionValue : targetName;
+        if (command.isEmpty()) return false;
+
+        command = command
+                .replace("{point}", context.pointName() != null ? context.pointName() : "")
+                .replace("{zone}", context.zoneName() != null ? context.zoneName() : "");
+        if (context.point() != null) {
+            command = command
+                    .replace("{x}", String.valueOf(context.point().pos().getX()))
+                    .replace("{y}", String.valueOf(context.point().pos().getY()))
+                    .replace("{z}", String.valueOf(context.point().pos().getZ()));
+        }
+
+        String finalCommand = command.startsWith("/") ? command.substring(1) : command;
+        var server = level.getServer();
+        if (server == null) return false;
+
+        var source = server.createCommandSourceStack()
+                .withLevel(level)
+                .withPermission(2)
+                .withSuppressedOutput();
+        try {
+            server.getCommands().performPrefixedCommand(source, finalCommand);
+            if (!silent) {
+                var message = Component.translatable("toast.capture_graph.command.success", finalCommand);
+                level.players().forEach(player -> player.displayClientMessage(message, true));
+            }
+            return true;
+        } catch (Exception e) {
+            if (!silent) {
+                var message = Component.translatable("toast.capture_graph.command.failed", finalCommand);
+                level.players().forEach(player -> player.displayClientMessage(message, true));
+            }
+            return false;
+        }
     }
 
     private static boolean parseBoolean(String value) {

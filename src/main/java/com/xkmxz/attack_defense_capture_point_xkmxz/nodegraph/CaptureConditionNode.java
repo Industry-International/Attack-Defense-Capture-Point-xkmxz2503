@@ -3,6 +3,8 @@ package com.xkmxz.attack_defense_capture_point_xkmxz.nodegraph;
 import com.lowdragmc.lowdraglib2.gui.texture.IGuiTexture;
 import com.lowdragmc.lowdraglib2.gui.texture.ColorRectTexture;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.api.node.Node;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.api.port.PortCapacity;
+import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.PortModel;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IPortDefinitionContext;
 import com.lowdragmc.lowdraglib2.nodegraphtookit.model.node.definition.IOptionDefinitionContext;
 import net.minecraft.network.chat.Component;
@@ -64,19 +66,22 @@ public class CaptureConditionNode extends Node {
         super.onDefinePorts(context);
 
         // 据点信号输入
-        context.addInputPort("point_target", CapturePointTypes.POINT_SIGNAL)
+        var pointTargetPort = (PortModel) context.addInputPort("point_target", CapturePointTypes.POINT_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_condition.port.point_target"))
                 .build();
+        pointTargetPort.setPortCapacity(PortCapacity.MULTIPLE);
 
         // 区域信号输入
-        context.addInputPort("zone_target", CapturePointTypes.ZONE_SIGNAL)
+        var zoneTargetPort = (PortModel) context.addInputPort("zone_target", CapturePointTypes.ZONE_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_condition.port.zone_target"))
                 .build();
+        zoneTargetPort.setPortCapacity(PortCapacity.MULTIPLE);
 
         // 布尔信号输入（条件嵌套：接收其他条件的输出）
-        context.addInputPort("bool_in", CapturePointTypes.BOOLEAN_SIGNAL)
+        var boolInPort = (PortModel) context.addInputPort("bool_in", CapturePointTypes.BOOLEAN_SIGNAL)
                 .withDisplayName(Component.translatable("node.capture_condition.port.bool_in"))
                 .build();
+        boolInPort.setPortCapacity(PortCapacity.MULTIPLE);
 
         // 布尔信号输出（true / false）
         context.addOutputPort("true_out", CapturePointTypes.BOOLEAN_SIGNAL)

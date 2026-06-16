@@ -120,6 +120,13 @@
   "gui.capture_point_graph.menu.list_status": "Show Status",
   "gui.capture_point_graph.menu.refresh": "Refresh",
   "gui.capture_point_graph.menu.close": "Close",
+  "gui.capture_point_graph.tray.title": "Point Tray",
+  "gui.capture_point_graph.tray.hint": "Points created from capture point blocks are parked here first. Add them into the graph when needed.",
+  "gui.capture_point_graph.tray.add": "Add",
+  "gui.capture_point_graph.btn_canvas": "Canvas",
+  "gui.capture_point_graph.canvas.title": "Canvas Settings",
+  "gui.capture_point_graph.canvas.width": "Canvas Width",
+  "gui.capture_point_graph.canvas.height": "Canvas Height",
 
   "gui.capture_point_graph.dialog.title": "Input",
   "gui.capture_point_graph.dialog.confirm": "Confirm",
@@ -320,6 +327,9 @@
   "action_type.capture_action.notify": "Notify",
   "action_type.capture_action.add_to_zone": "Add to Zone",
   "action_type.capture_action.remove_from_zone": "Remove from Zone",
+  "action_type.capture_action.run_command": "Run Command",
+
+  "message.attack_defense_capture_point_xkmxz.op_only": "Only operators can open this panel",
 
   "toast.capture_node.create.success": "Created node '%s'",
 
@@ -336,5 +346,8 @@
   "hud.capture_progress.owner_team": "Owner: %s",
 
   "toast.capture_point_graph.no_server_access": "Cannot access server data. Use /capturepoint commands instead.",
-  "toast.capture_point_graph.save_failed": "Save failed: %s"
+  "toast.capture_point_graph.save_failed": "Save failed: %s",
+  "toast.capture_point_graph.canvas.invalid": "Canvas size must be valid numbers",
+  "toast.capture_graph.command.success": "Command executed: %s",
+  "toast.capture_graph.command.failed": "Command failed: %s"
 }

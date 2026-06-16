@@ -246,16 +246,20 @@ public class CaptureManager extends SavedData {
 
     // ---- View State (节点图视角状态) ----
 
-    public record ViewState(float offsetX, float offsetY, float scale) {
+    public record ViewState(float offsetX, float offsetY, float scale, float canvasWidth, float canvasHeight) {
         private static final String TAG_OFFSET_X = "offsetX";
         private static final String TAG_OFFSET_Y = "offsetY";
         private static final String TAG_SCALE = "scale";
+        private static final String TAG_CANVAS_WIDTH = "canvasWidth";
+        private static final String TAG_CANVAS_HEIGHT = "canvasHeight";
 
         public CompoundTag toNbt() {
             var tag = new CompoundTag();
             tag.putFloat(TAG_OFFSET_X, offsetX);
             tag.putFloat(TAG_OFFSET_Y, offsetY);
             tag.putFloat(TAG_SCALE, scale);
+            tag.putFloat(TAG_CANVAS_WIDTH, canvasWidth);
+            tag.putFloat(TAG_CANVAS_HEIGHT, canvasHeight);
             return tag;
         }
 
@@ -263,7 +267,9 @@ public class CaptureManager extends SavedData {
             return new ViewState(
                     tag.getFloat(TAG_OFFSET_X),
                     tag.getFloat(TAG_OFFSET_Y),
-                    tag.getFloat(TAG_SCALE)
+                    tag.getFloat(TAG_SCALE),
+                    tag.contains(TAG_CANVAS_WIDTH) ? tag.getFloat(TAG_CANVAS_WIDTH) : 800f,
+                    tag.contains(TAG_CANVAS_HEIGHT) ? tag.getFloat(TAG_CANVAS_HEIGHT) : 800f
             );
         }
     }

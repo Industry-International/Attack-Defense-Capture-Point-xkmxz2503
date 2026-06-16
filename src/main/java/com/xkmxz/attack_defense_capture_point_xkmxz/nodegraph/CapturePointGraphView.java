@@ -28,6 +28,8 @@ public class CapturePointGraphView extends GraphView {
     private Runnable refreshCallback;
     private int refreshCounter;
     private CapturePointGraphScreen screen;
+    private float canvasWidth = 800f;
+    private float canvasHeight = 800f;
     /** 待恢复的视角状态（延迟到第一帧 screenTick 后应用） */
     private boolean hasPendingViewState = false;
     private float pendingOffsetX, pendingOffsetY, pendingScale;
@@ -175,8 +177,23 @@ public class CapturePointGraphView extends GraphView {
         return new CaptureManager.ViewState(
                 this.graphView.getOffsetX(),
                 this.graphView.getOffsetY(),
-                this.graphView.getScale()
+                this.graphView.getScale(),
+                canvasWidth,
+                canvasHeight
         );
+    }
+
+    public void setCanvasSize(float width, float height) {
+        this.canvasWidth = Math.max(200f, width);
+        this.canvasHeight = Math.max(200f, height);
+    }
+
+    public float getCanvasWidth() {
+        return canvasWidth;
+    }
+
+    public float getCanvasHeight() {
+        return canvasHeight;
     }
 
     /**
@@ -205,6 +222,10 @@ public class CapturePointGraphView extends GraphView {
         // getContentViewContainer().getLocalMouse() 正确地将 GraphView 本地坐标
         // 转换为内容容器本地坐标（图空间坐标），自动处理 offset/scale 变换
         return getContentViewContainer().getLocalMouse(screenX, screenY);
+    }
+
+    public org.joml.Vector2f getGraphCoordsAtScreen(float screenX, float screenY) {
+        return screenToGraphCoords(screenX, screenY);
     }
 
     // ---- 右键菜单 ----
@@ -422,6 +443,13 @@ public class CapturePointGraphView extends GraphView {
         return false;
     }
 
+    private boolean isConstantModel(AbstractNodeModel model) {
+        if (model instanceof INodeWithOptions opts) {
+            return opts.getNodeOptionById("constant_value") != null;
+        }
+        return false;
+    }
+
     /**
      * 获取节点类型字符串： "point" / "zone" / "condition" / "gate" / "action" / "constant" / "decision"。
      */
@@ -431,6 +459,7 @@ public class CapturePointGraphView extends GraphView {
         if (isConditionModel(model)) return "condition";
         if (isGateModel(model)) return "gate";
         if (isActionModel(model)) return "action";
+        if (isConstantModel(model)) return "constant";
         // fallback for old-style decision node
         if (model instanceof INodeWithOptions opts
                 && opts.getNodeOptionById("condition") != null) return "decision";

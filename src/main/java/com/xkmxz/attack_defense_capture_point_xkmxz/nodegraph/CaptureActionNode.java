@@ -21,6 +21,7 @@ import net.minecraft.network.chat.Component;
  *   <li>{@code notify} — 发送通知气泡</li>
  *   <li>{@code add_to_zone} — 将据点添加到区域</li>
  *   <li>{@code remove_from_zone} — 从区域移除据点</li>
+ *   <li>{@code run_command} — 以服务端身份执行命令</li>
  * </ul>
  */
 public class CaptureActionNode extends Node {
@@ -59,6 +60,11 @@ public class CaptureActionNode extends Node {
                 .withDefaultValue("true")
                 .withDisplayName(Component.translatable("node.capture_action.option.action_value"))
                 .build();
+
+        context.addOption("silent", Boolean.class)
+                .withDefaultValue(true)
+                .withDisplayName(Component.translatable("node.capture_action.option.silent"))
+                .build();
     }
 
     @Override
@@ -81,7 +87,8 @@ public class CaptureActionNode extends Node {
         SET_ZONE_CAPTURED("set_zone_captured"),
         NOTIFY("notify"),
         ADD_TO_ZONE("add_to_zone"),
-        REMOVE_FROM_ZONE("remove_from_zone");
+        REMOVE_FROM_ZONE("remove_from_zone"),
+        RUN_COMMAND("run_command");
 
         private final String id;
 
